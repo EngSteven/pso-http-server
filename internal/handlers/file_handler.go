@@ -9,6 +9,7 @@ import (
 
 	"github.com/EngSteven/pso-http-server/internal/server"
 	"github.com/EngSteven/pso-http-server/internal/types"
+	"github.com/EngSteven/pso-http-server/internal/workers"
 )
 
 type FileResponse struct {
@@ -35,16 +36,33 @@ func CreateFileHandler(req *types.Request) *types.Response {
 		}
 	}
 
-	fullContent := strings.Repeat(content+"\n", repeat)
-	err := os.WriteFile(name, []byte(fullContent), 0644)
-	if err != nil {
-		msg := fmt.Sprintf(`{"error":"failed to create file: %v"}`, err)
-		return server.NewResponse(500, "Internal Server Error", "application/json", []byte(msg))
+	jobFn := func() *types.Response {
+		fullContent := strings.Repeat(content+"\n", repeat)
+		err := os.WriteFile(name, []byte(fullContent), 0644)
+		if err != nil {
+			msg := fmt.Sprintf(`{"error":"failed to create file: %v"}`, err)
+			return server.NewResponse(500, "Internal Server Error", "application/json", []byte(msg))
+		}
+		resp := FileResponse{FileName: name, Message: "file created successfully"}
+		body, _ := json.MarshalIndent(resp, "", "  ")
+		return server.NewResponse(200, "OK", "application/json", body)
 	}
 
-	resp := FileResponse{FileName: name, Message: "file created successfully"}
-	body, _ := json.MarshalIndent(resp, "", "  ")
-	return server.NewResponse(200, "OK", "application/json", body)
+	p := workers.GetPool("createfile")
+	if p == nil {
+		return jobFn()
+	}
+	resp, err := p.SubmitAndWait(jobFn, 30000)
+	if err == workers.ErrQueueFull {
+		return server.NewResponse(503, "Service Unavailable", "application/json", []byte(`{"error":"queue full", "retry_after_ms":1000}`))
+	}
+	if err == workers.ErrTimeout {
+		return server.NewResponse(500, "Internal Server Error", "application/json", []byte(`{"error":"job timeout"}`))
+	}
+	if resp == nil {
+		return server.NewResponse(500, "Internal Server Error", "application/json", []byte(`{"error":"empty job result"}`))
+	}
+	return resp
 }
 
 // DeleteFileHandler elimina un archivo existente.

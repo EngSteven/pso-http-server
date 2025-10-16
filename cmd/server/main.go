@@ -1,10 +1,12 @@
 package main
 
 import (
-	"github.com/EngSteven/pso-http-server/internal/handlers"
-	"github.com/EngSteven/pso-http-server/internal/server"
 	"log"
 	"os"
+
+	"github.com/EngSteven/pso-http-server/internal/handlers"
+	"github.com/EngSteven/pso-http-server/internal/server"
+	"github.com/EngSteven/pso-http-server/internal/workers"
 )
 
 func main() {
@@ -15,7 +17,11 @@ func main() {
 
 	srv := server.NewServer(":" + port)
 
-	// Registro de rutas
+	// 🧩 Inicializar pools antes de registrar las rutas
+	workers.InitPool("fibonacci", 2, 5)
+	workers.InitPool("createfile", 2, 5)
+
+	// 🗺️ Registro de rutas
 	srv.Router.Handle("/help", handlers.HelpHandler)
 	srv.Router.Handle("/status", handlers.StatusHandler)
 	srv.Router.Handle("/reverse", handlers.ReverseHandler)
@@ -23,6 +29,8 @@ func main() {
 	srv.Router.Handle("/fibonacci", handlers.FibonacciHandler)
 	srv.Router.Handle("/createfile", handlers.CreateFileHandler)
 	srv.Router.Handle("/deletefile", handlers.DeleteFileHandler)
+
+	log.Printf("Servidor escuchando en http://localhost:%s\n", port)
 
 	if err := srv.Start(); err != nil {
 		log.Fatalf("Error al iniciar servidor: %v", err)
