@@ -15,8 +15,14 @@ func main() {
 
 	srv := server.NewServer(":" + port)
 
-	// Registrar rutas
+	// Registro de rutas
 	srv.Router.Handle("/help", handlers.HelpHandler)
+	srv.Router.Handle("/status", handlers.StatusHandler)
+	srv.Router.Handle("/reverse", handlers.ReverseHandler)
+	srv.Router.Handle("/toupper", handlers.ToUpperHandler)
+	srv.Router.Handle("/fibonacci", handlers.FibonacciHandler)
+	srv.Router.Handle("/createfile", handlers.CreateFileHandler)
+	srv.Router.Handle("/deletefile", handlers.DeleteFileHandler)
 
 	if err := srv.Start(); err != nil {
 		log.Fatalf("Error al iniciar servidor: %v", err)
