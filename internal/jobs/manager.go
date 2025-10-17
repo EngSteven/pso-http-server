@@ -312,7 +312,7 @@ func (j *JobManager) dispatcher() {
 			}
 
 			// Try to enqueue into pool (non-blocking)
-			jobID, pResCh, cancelCh, err := p.Enqueue(jobFn)
+			_, pResCh, cancelCh, err := p.Enqueue(jobFn, workers.PriorityNormal)
 			if err != nil {
 				// pool queue full => mark meta back to queued and re-enqueue with small sleep (or drop)
 				j.mu.Lock()
@@ -338,17 +338,18 @@ func (j *JobManager) dispatcher() {
 				continue
 			}
 
-			// record mapping to collect result and allow cancellation
+			// record mapping to collect result and allow cancellation (use meta.ID as key)
 			j.mu.Lock()
-			j.resChMap[jobID] = pResCh
-			j.cancelChMap[jobID] = cancelCh
+			j.resChMap[meta.ID] = pResCh
+			j.cancelChMap[meta.ID] = cancelCh
 			// update meta to running with pool-specific job id if needed
 			meta.UpdatedAt = time.Now()
 			j.appendToJournal(meta)
 			j.mu.Unlock()
 
 			// wait asynchronously for result and update meta
-			go func(m *JobMeta, poolJobID string, pch chan *types.Response) {
+			// capture meta.ID and meta pointer to avoid closure issues
+			go func(m *JobMeta, metaID string, pch chan *types.Response) {
 				select {
 				case res := <-pch:
 					j.mu.Lock()
@@ -363,11 +364,11 @@ func (j *JobManager) dispatcher() {
 					m.UpdatedAt = time.Now()
 					j.appendToJournal(m)
 					// cleanup maps
-					delete(j.resChMap, poolJobID)
-					delete(j.cancelChMap, poolJobID)
+					delete(j.resChMap, metaID)
+					delete(j.cancelChMap, metaID)
 					j.mu.Unlock()
 				}
-			}(meta, jobID, pResCh)
+			}(meta, meta.ID, pResCh)
 		}
 	}
 }

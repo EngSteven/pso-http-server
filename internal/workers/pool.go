@@ -16,17 +16,27 @@ var (
 	ErrTimeout   = errors.New("timeout waiting for job result")
 )
 
+// JobFunc es la función ejecutable de un job.
+// Recibe un canal de cancelación y devuelve una respuesta HTTP.
 type JobFunc func(cancelCh <-chan struct{}) *types.Response
 
+// Prioridades de los jobs (para compatibilidad futura)
+const (
+	PriorityLow = iota
+	PriorityNormal
+	PriorityHigh
+)
+
+// Estructura interna del job encolado
 type job struct {
-	id    string
-	fn    JobFunc
-	resCh chan *types.Response
-	// cancel channel per job: workers will not close it, job function should observe it
+	id       string
+	fn       JobFunc
+	resCh    chan *types.Response
 	cancelCh chan struct{}
+	priority int
 }
 
-// Pool keeps workers and a FIFO queue
+// Pool mantiene el conjunto de workers y su cola de trabajo
 type Pool struct {
 	name     string
 	workers  int
@@ -38,7 +48,7 @@ type Pool struct {
 
 var pools = make(map[string]*Pool)
 
-// InitPool creates and starts a pool (idempotent)
+// InitPool crea o devuelve un pool existente
 func InitPool(name string, workersCount, queueDepth int) *Pool {
 	if p, ok := pools[name]; ok {
 		return p
@@ -55,6 +65,7 @@ func InitPool(name string, workersCount, queueDepth int) *Pool {
 	return p
 }
 
+// start inicia los workers en goroutines
 func (p *Pool) start() {
 	for i := 0; i < p.workers; i++ {
 		go func(workerID int) {
@@ -63,15 +74,16 @@ func (p *Pool) start() {
 				case jb := <-p.queue:
 					atomic.AddInt32(&p.busy, 1)
 					start := time.Now()
-					// execute job
+
 					resp := jb.fn(jb.cancelCh)
-					// record metrics
+
 					p.metrics.Record(time.Since(start))
-					// deliver result (non-blocking)
+
 					select {
 					case jb.resCh <- resp:
 					default:
 					}
+
 					atomic.AddInt32(&p.busy, -1)
 				case <-p.stopChan:
 					return
@@ -81,14 +93,14 @@ func (p *Pool) start() {
 	}
 }
 
-// Enqueue attempts to put a job in the pool queue without blocking.
-// If the queue is full returns ErrQueueFull.
-func (p *Pool) Enqueue(fn JobFunc) (jobID string, resCh chan *types.Response, cancelCh chan struct{}, err error) {
+// Enqueue agrega un job a la cola (sin bloquear)
+func (p *Pool) Enqueue(fn JobFunc, priority int) (jobID string, resCh chan *types.Response, cancelCh chan struct{}, err error) {
 	jb := &job{
 		id:       util.NewRequestID(),
 		fn:       fn,
 		resCh:    make(chan *types.Response, 1),
 		cancelCh: make(chan struct{}),
+		priority: priority,
 	}
 	select {
 	case p.queue <- jb:
@@ -98,31 +110,30 @@ func (p *Pool) Enqueue(fn JobFunc) (jobID string, resCh chan *types.Response, ca
 	}
 }
 
-// SubmitAndWait keeps backward compatibility: enqueue and wait (with optional timeout)
-func (p *Pool) SubmitAndWait(fn JobFunc, timeoutMs int) (*types.Response, error) {
-	id, resCh, _, err := p.Enqueue(fn)
+// SubmitAndWait es la interfaz estándar usada por los handlers.
+// Por compatibilidad, el segundo parámetro se interpreta como prioridad (no timeout).
+func (p *Pool) SubmitAndWait(fn JobFunc, priority int) (*types.Response, error) {
+	id, resCh, _, err := p.Enqueue(fn, priority)
 	if err != nil {
 		return nil, ErrQueueFull
 	}
-	_ = id // id unused here
-	if timeoutMs <= 0 {
-		resp := <-resCh
-		return resp, nil
-	}
+	_ = id
+
 	select {
 	case resp := <-resCh:
 		return resp, nil
-	case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
+	case <-time.After(30 * time.Second):
 		return nil, ErrTimeout
 	}
 }
 
-// GetPool returns existing pool or nil
+// GetPool devuelve un pool existente o nil si no existe
 func GetPool(name string) *Pool {
 	return pools[name]
 }
 
-// Info, PoolInfo, GetPoolInfo remain same as before...
+// --- Métricas e información ---
+
 type PoolInfo struct {
 	Name           string  `json:"name"`
 	Workers        int     `json:"workers"`

@@ -23,6 +23,11 @@ func main() {
 	workers.InitPool("fibonacci", 2, 5)
 	workers.InitPool("createfile", 2, 5)
 
+	workers.InitPool("isprime", 2, 5)
+	workers.InitPool("factor", 2, 5)
+	workers.InitPool("pi", 1, 2)
+	workers.InitPool("matrixmul", 2, 3)
+
 	// init job manager: journal path and queue depth per priority (e.g., 50 each, max total 150)
 	jobMgr, err := jobs.NewJobManager("data/jobs_journal.jsonl", 50, 150)
 	if err != nil {
@@ -38,6 +43,12 @@ func main() {
 	srv.Router.Handle("/fibonacci", handlers.FibonacciHandler)
 	srv.Router.Handle("/createfile", handlers.CreateFileHandler)
 	srv.Router.Handle("/deletefile", handlers.DeleteFileHandler)
+
+	//  CPU-bound
+	srv.Router.Handle("/isprime", handlers.IsPrimeHandler)
+	srv.Router.Handle("/factor", handlers.FactorHandler)
+	srv.Router.Handle("/pi", handlers.PiHandler)
+	srv.Router.Handle("/matrixmul", handlers.MatrixHandler)
 
 	// jobs endpoints
 	srv.Router.Handle("/jobs/submit", handlers.JobsSubmitHandler)

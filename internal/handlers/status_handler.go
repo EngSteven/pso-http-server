@@ -33,6 +33,11 @@ func StatusHandler(req *types.Request) *types.Response {
 		pools["createfile"] = info
 	}
 
+	if p := workers.GetPool("pi"); p != nil {
+		info := p.Info()
+		pools["pi"] = info
+	}
+
 	status := Status{
 		UptimeSeconds: time.Since(startTime).Seconds(),
 		PID:           os.Getpid(),
