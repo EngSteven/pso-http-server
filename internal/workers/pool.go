@@ -11,6 +11,16 @@ import (
 	"github.com/EngSteven/pso-http-server/internal/util"
 )
 
+var defaultTimeouts = map[string]int{
+    "isprime":     5000,  // 5 segundos
+    "factor":      8000,
+    "pi":          15000,
+    "matrixmul":   7000,
+    "mandelbrot":  20000,
+    "fibonacci":   3000,
+    "createfile":  2000,
+}
+
 var (
 	ErrQueueFull = errors.New("queue full")
 	ErrTimeout   = errors.New("timeout waiting for job result")
@@ -76,6 +86,14 @@ func (p *Pool) start() {
 					start := time.Now()
 
 					resp := jb.fn(jb.cancelCh)
+
+					// agregar identificador del worker al header
+					if resp != nil {
+							if resp.Headers == nil {
+									resp.Headers = map[string]string{}
+							}
+							resp.Headers["X-Worker-Id"] = fmt.Sprintf("%s-%d", p.name, workerID)
+					}
 
 					p.metrics.Record(time.Since(start))
 
@@ -165,4 +183,15 @@ func GetPoolInfo(name string) (*PoolInfo, error) {
 	}
 	info := p.Info()
 	return &info, nil
+}
+
+func DefaultTimeoutFor(name string) int {
+    if v, ok := defaultTimeouts[name]; ok {
+        return v
+    }
+    return 5000 // fallback
+}
+
+func GetAllPools() map[string]*Pool {
+    return pools
 }

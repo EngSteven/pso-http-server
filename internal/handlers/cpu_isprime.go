@@ -66,7 +66,8 @@ func IsPrimeHandler(req *types.Request) *types.Response {
 		return job(nil)
 	}
 
-	resp, err := pool.SubmitAndWait(job, workers.PriorityNormal)
+	timeout := workers.DefaultTimeoutFor("isprime")
+	resp, err := pool.SubmitAndWait(job, timeout)
 	if err != nil {
 		return server.NewResponse(503, "Service Unavailable", "application/json", []byte(`{"error":"queue full"}`))
 	}

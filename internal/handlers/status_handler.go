@@ -9,42 +9,48 @@ import (
 	"github.com/EngSteven/pso-http-server/internal/server"
 	"github.com/EngSteven/pso-http-server/internal/types"
 	"github.com/EngSteven/pso-http-server/internal/workers"
+	"github.com/EngSteven/pso-http-server/internal/metrics"
 )
 
 var startTime = time.Now()
 
+// Status estructura JSON del estado general del sistema
 type Status struct {
-	UptimeSeconds float64 `json:"uptime_seconds"`
-	PID           int     `json:"pid"`
-	GoRoutines    int     `json:"goroutines"`
-	GoVersion     string  `json:"go_version"`
-	Pools map[string]workers.PoolInfo `json:"pools"`
+	UptimeSeconds   float64                     `json:"uptime_seconds"`
+	PID             int                         `json:"pid"`
+	Hostname        string                      `json:"hostname"`
+	GoRoutines      int                         `json:"goroutines"`
+	GoVersion       string                      `json:"go_version"`
+	ConnectionsSeen int64                       `json:"connections_seen"`
+	Pools           map[string]workers.PoolInfo `json:"pools"`
+	Timestamp       string                      `json:"timestamp"`
 }
 
-// StatusHandler devuelve información básica del proceso.
+// StatusHandler devuelve información detallada del proceso y pools activos.
 func StatusHandler(req *types.Request) *types.Response {
 	pools := make(map[string]workers.PoolInfo)
-	if p := workers.GetPool("fibonacci"); p != nil {
-		info := p.Info()
-		pools["fibonacci"] = info
-	}
-	if p := workers.GetPool("createfile"); p != nil {
-		info := p.Info()
-		pools["createfile"] = info
+
+	// Recorre dinámicamente todos los pools registrados
+	for name, pool := range workers.GetAllPools() {
+		if pool != nil {
+			info := pool.Info()
+			pools[name] = info
+		}
 	}
 
-	if p := workers.GetPool("pi"); p != nil {
-		info := p.Info()
-		pools["pi"] = info
-	}
+	hostname, _ := os.Hostname()
 
 	status := Status{
-		UptimeSeconds: time.Since(startTime).Seconds(),
-		PID:           os.Getpid(),
-		GoRoutines:    runtime.NumGoroutine(),
-		GoVersion:     runtime.Version(),
-		Pools:         pools,
+		UptimeSeconds:   time.Since(startTime).Seconds(),
+		PID:             os.Getpid(),
+		Hostname:        hostname,
+		GoRoutines:      runtime.NumGoroutine(),
+		GoVersion:       runtime.Version(),
+		ConnectionsSeen: metrics.GetTotalConnections(),
+		Pools:           pools,
+		Timestamp:       time.Now().Format(time.RFC3339Nano),
 	}
+
 	body, _ := json.MarshalIndent(status, "", "  ")
 	return server.NewResponse(200, "OK", "application/json", body)
 }

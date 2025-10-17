@@ -4,7 +4,10 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"sync/atomic"
 )
+
+var totalConnections int64
 
 type PoolMetrics struct {
 	mu            sync.Mutex
@@ -58,4 +61,13 @@ func (m *PoolMetrics) Percentile(p float64) int64 {
 		idx = len(cp) - 1
 	}
 	return cp[idx]
+}
+
+
+func IncrementConnections() {
+	atomic.AddInt64(&totalConnections, 1)
+}
+
+func GetTotalConnections() int64 {
+	return atomic.LoadInt64(&totalConnections)
 }

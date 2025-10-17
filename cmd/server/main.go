@@ -27,6 +27,8 @@ func main() {
 	workers.InitPool("factor", 2, 5)
 	workers.InitPool("pi", 1, 2)
 	workers.InitPool("matrixmul", 2, 3)
+	workers.InitPool("mandelbrot", 2, 2) 
+
 
 	// init job manager: journal path and queue depth per priority (e.g., 50 each, max total 150)
 	jobMgr, err := jobs.NewJobManager("data/jobs_journal.jsonl", 50, 150)
@@ -49,6 +51,8 @@ func main() {
 	srv.Router.Handle("/factor", handlers.FactorHandler)
 	srv.Router.Handle("/pi", handlers.PiHandler)
 	srv.Router.Handle("/matrixmul", handlers.MatrixHandler)
+	srv.Router.Handle("/mandelbrot", handlers.MandelbrotHandler)
+
 
 	// jobs endpoints
 	srv.Router.Handle("/jobs/submit", handlers.JobsSubmitHandler)
