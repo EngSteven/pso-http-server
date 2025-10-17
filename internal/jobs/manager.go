@@ -15,6 +15,7 @@ import (
 	"github.com/EngSteven/pso-http-server/internal/types"
 	"github.com/EngSteven/pso-http-server/internal/util"
 	"github.com/EngSteven/pso-http-server/internal/workers"
+	"github.com/EngSteven/pso-http-server/internal/algorithms"
 )
 
 var (
@@ -291,28 +292,14 @@ func (j *JobManager) waitForResult(meta *JobMeta, id string, pch chan *types.Res
 	}
 }
 
+/*Algoritmos de los jobs*/
+
 func (j *JobManager) wrapJob(meta *JobMeta) workers.JobFunc {
 	return func(cancelCh <-chan struct{}) *types.Response {
 		switch meta.Command {
 		case "fibonacci":
 			n, _ := strconv.Atoi(meta.Params["num"])
-			series := make([]int, n)
-			if n > 0 {
-				series[0] = 0
-			}
-			if n > 1 {
-				series[1] = 1
-				for i := 2; i < n; i++ {
-					select {
-					case <-cancelCh:
-						return j.newResponse(500, "Canceled", "application/json", []byte(`{"error":"cancelled"}`))
-					default:
-					}
-					series[i] = series[i-1] + series[i-2]
-				}
-			}
-			data, _ := json.Marshal(map[string]interface{}{"n": n, "series": series})
-			return j.newResponse(200, "OK", "application/json", data)
+			return algorithms.CalculateFibonacci(n, cancelCh)
 		case "createfile":
 			name := meta.Params["name"]
 			content := meta.Params["content"]
