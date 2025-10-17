@@ -16,12 +16,14 @@ var (
 	ErrTimeout   = errors.New("timeout waiting for job result")
 )
 
-type JobFunc func() *types.Response
+type JobFunc func(cancelCh <-chan struct{}) *types.Response
 
 type job struct {
 	id    string
 	fn    JobFunc
 	resCh chan *types.Response
+	// cancel channel per job: workers will not close it, job function should observe it
+	cancelCh chan struct{}
 }
 
 // Pool keeps workers and a FIFO queue
@@ -62,10 +64,10 @@ func (p *Pool) start() {
 					atomic.AddInt32(&p.busy, 1)
 					start := time.Now()
 					// execute job
-					resp := jb.fn()
+					resp := jb.fn(jb.cancelCh)
 					// record metrics
 					p.metrics.Record(time.Since(start))
-					// deliver result (non-blocking with select to avoid deadlocks)
+					// deliver result (non-blocking)
 					select {
 					case jb.resCh <- resp:
 					default:
@@ -79,46 +81,39 @@ func (p *Pool) start() {
 	}
 }
 
-// Submit tries to enqueue a job. If queue full returns ErrQueueFull.
-func (p *Pool) Submit(fn JobFunc) (*types.Response, error) {
+// Enqueue attempts to put a job in the pool queue without blocking.
+// If the queue is full returns ErrQueueFull.
+func (p *Pool) Enqueue(fn JobFunc) (jobID string, resCh chan *types.Response, cancelCh chan struct{}, err error) {
 	jb := &job{
-		id:    util.NewRequestID(),
-		fn:    fn,
-		resCh: make(chan *types.Response, 1),
+		id:       util.NewRequestID(),
+		fn:       fn,
+		resCh:    make(chan *types.Response, 1),
+		cancelCh: make(chan struct{}),
 	}
 	select {
 	case p.queue <- jb:
-		// wait for result (blocking). Could add timeout at higher level.
-		resp := <-jb.resCh
-		return resp, nil
+		return jb.id, jb.resCh, jb.cancelCh, nil
 	default:
-		return nil, ErrQueueFull
+		return "", nil, nil, ErrQueueFull
 	}
 }
 
-// SubmitAndWait submits a job and waits up to timeoutMs milliseconds for result.
-// If timeoutMs <= 0, wait indefinitely.
+// SubmitAndWait keeps backward compatibility: enqueue and wait (with optional timeout)
 func (p *Pool) SubmitAndWait(fn JobFunc, timeoutMs int) (*types.Response, error) {
-	jb := &job{
-		id:    util.NewRequestID(),
-		fn:    fn,
-		resCh: make(chan *types.Response, 1),
+	id, resCh, _, err := p.Enqueue(fn)
+	if err != nil {
+		return nil, ErrQueueFull
+	}
+	_ = id // id unused here
+	if timeoutMs <= 0 {
+		resp := <-resCh
+		return resp, nil
 	}
 	select {
-	case p.queue <- jb:
-		// wait with timeout
-		if timeoutMs <= 0 {
-			resp := <-jb.resCh
-			return resp, nil
-		}
-		select {
-		case resp := <-jb.resCh:
-			return resp, nil
-		case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
-			return nil, ErrTimeout
-		}
-	default:
-		return nil, ErrQueueFull
+	case resp := <-resCh:
+		return resp, nil
+	case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
+		return nil, ErrTimeout
 	}
 }
 
@@ -127,7 +122,7 @@ func GetPool(name string) *Pool {
 	return pools[name]
 }
 
-// PoolInfo holds observable info
+// Info, PoolInfo, GetPoolInfo remain same as before...
 type PoolInfo struct {
 	Name           string  `json:"name"`
 	Workers        int     `json:"workers"`
@@ -139,7 +134,6 @@ type PoolInfo struct {
 	P95Ms          int64   `json:"p95_ms"`
 }
 
-// Info returns pool metrics snapshot
 func (p *Pool) Info() PoolInfo {
 	return PoolInfo{
 		Name:           p.name,
@@ -153,7 +147,6 @@ func (p *Pool) Info() PoolInfo {
 	}
 }
 
-// GetPoolInfo returns info for a named pool (nil if not found)
 func GetPoolInfo(name string) (*PoolInfo, error) {
 	p := GetPool(name)
 	if p == nil {

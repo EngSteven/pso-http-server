@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/EngSteven/pso-http-server/internal/handlers"
+	"github.com/EngSteven/pso-http-server/internal/jobs"
 	"github.com/EngSteven/pso-http-server/internal/server"
 	"github.com/EngSteven/pso-http-server/internal/workers"
 )
@@ -15,13 +16,21 @@ func main() {
 		port = "8080"
 	}
 
+	// create server
 	srv := server.NewServer(":" + port)
 
-	// 🧩 Inicializar pools antes de registrar las rutas
+	// init pools
 	workers.InitPool("fibonacci", 2, 5)
 	workers.InitPool("createfile", 2, 5)
 
-	// 🗺️ Registro de rutas
+	// init job manager: journal path and queue depth per priority (e.g., 50 each, max total 150)
+	jobMgr, err := jobs.NewJobManager("data/jobs_journal.jsonl", 50, 150)
+	if err != nil {
+		log.Fatalf("failed to init job manager: %v", err)
+	}
+	handlers.InitializeJobManager(jobMgr)
+
+	// register routes
 	srv.Router.Handle("/help", handlers.HelpHandler)
 	srv.Router.Handle("/status", handlers.StatusHandler)
 	srv.Router.Handle("/reverse", handlers.ReverseHandler)
@@ -30,8 +39,13 @@ func main() {
 	srv.Router.Handle("/createfile", handlers.CreateFileHandler)
 	srv.Router.Handle("/deletefile", handlers.DeleteFileHandler)
 
-	log.Printf("Servidor escuchando en http://localhost:%s\n", port)
+	// jobs endpoints
+	srv.Router.Handle("/jobs/submit", handlers.JobsSubmitHandler)
+	srv.Router.Handle("/jobs/status", handlers.JobsStatusHandler)
+	srv.Router.Handle("/jobs/result", handlers.JobsResultHandler)
+	srv.Router.Handle("/jobs/cancel", handlers.JobsCancelHandler)
 
+	log.Printf("🚀 Servidor escuchando en http://localhost:%s\n", port)
 	if err := srv.Start(); err != nil {
 		log.Fatalf("Error al iniciar servidor: %v", err)
 	}

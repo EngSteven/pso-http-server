@@ -27,8 +27,16 @@ func FibonacciHandler(req *types.Request) *types.Response {
 	}
 
 	// preparar job function
-	jobFn := func() *types.Response {
+	jobFn := func(cancelCh <-chan struct{}) *types.Response {
 		time.Sleep(2 * time.Second)
+		
+		// Verificar cancelación después del sleep
+		select {
+		case <-cancelCh:
+			return server.NewResponse(500, "Canceled", "application/json", []byte(`{"error":"cancelled"}`))
+		default:
+		}
+		
 		series := make([]int, n)
 		if n > 0 {
 			series[0] = 0
@@ -36,6 +44,12 @@ func FibonacciHandler(req *types.Request) *types.Response {
 		if n > 1 {
 			series[1] = 1
 			for i := 2; i < n; i++ {
+				// Verificar cancelación en cada iteración
+				select {
+				case <-cancelCh:
+					return server.NewResponse(500, "Canceled", "application/json", []byte(`{"error":"cancelled"}`))
+				default:
+				}
 				series[i] = series[i-1] + series[i-2]
 			}
 		}
@@ -47,8 +61,8 @@ func FibonacciHandler(req *types.Request) *types.Response {
 	// intentamos enviar al pool "fibonacci"
 	p := workers.GetPool("fibonacci")
 	if p == nil {
-		// si no existe pool, ejecutar inline (fallback)
-		return jobFn()
+		// si no existe pool, ejecutar inline (fallback) - pasar nil como cancelCh
+		return jobFn(nil)
 	}
 	// espera hasta 30s como ejemplo (30000 ms)
 	resp, err := p.SubmitAndWait(jobFn, 30000)

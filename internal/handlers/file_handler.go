@@ -36,7 +36,14 @@ func CreateFileHandler(req *types.Request) *types.Response {
 		}
 	}
 
-	jobFn := func() *types.Response {
+	jobFn := func(cancelCh <-chan struct{}) *types.Response {
+		// Verificar cancelación antes de empezar
+		select {
+		case <-cancelCh:
+			return server.NewResponse(500, "Canceled", "application/json", []byte(`{"error":"cancelled"}`))
+		default:
+		}
+
 		fullContent := strings.Repeat(content+"\n", repeat)
 		err := os.WriteFile(name, []byte(fullContent), 0644)
 		if err != nil {
@@ -50,7 +57,8 @@ func CreateFileHandler(req *types.Request) *types.Response {
 
 	p := workers.GetPool("createfile")
 	if p == nil {
-		return jobFn()
+		// Pasar nil como cancelCh cuando no hay pool
+		return jobFn(nil)
 	}
 	resp, err := p.SubmitAndWait(jobFn, 30000)
 	if err == workers.ErrQueueFull {
