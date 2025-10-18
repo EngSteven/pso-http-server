@@ -57,6 +57,8 @@ func main() {
 	// register routes
 	srv.Router.Handle("/help", handlers.HelpHandler)
 	srv.Router.Handle("/status", handlers.StatusHandler)
+	srv.Router.Handle("/metrics", handlers.MetricsHandler)
+	
 	srv.Router.Handle("/reverse", handlers.ReverseHandler)
 	srv.Router.Handle("/toupper", handlers.ToUpperHandler)
 	srv.Router.Handle("/fibonacci", handlers.FibonacciHandler)
