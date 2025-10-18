@@ -350,6 +350,10 @@ func (j *JobManager) wrapJob(meta *JobMeta) workers.JobFunc {
 			sleepSeconds, _ := strconv.Atoi(meta.Params["sleep"])
 			return algorithms.LoadTest(taskCount, sleepSeconds, cancelCh)
 		
+		
+		//-------------------------------CPU Bound---------------------------
+		
+
 		case "isprime":
 			n, _ := strconv.ParseInt(meta.Params["n"], 10, 64)
 			method := meta.Params["method"]
@@ -375,6 +379,34 @@ func (j *JobManager) wrapJob(meta *JobMeta) workers.JobFunc {
 			size, _ := strconv.Atoi(meta.Params["size"])
 			seed, _ := strconv.ParseInt(meta.Params["seed"], 10, 64)
 			return algorithms.MatrixMultiply(size, seed, cancelCh)
+
+		
+		//-------------------------------IO Bound---------------------------
+		
+		case "sortfile":
+			name := meta.Params["name"]
+			algo := meta.Params["algo"]
+			return algorithms.SortFile(name, algo, cancelCh)
+		
+		case "wordcount":
+			name := meta.Params["name"]
+			return algorithms.WordCount(name, cancelCh)
+
+		case "grep":
+			name := meta.Params["name"]
+			pattern := meta.Params["pattern"]
+			return algorithms.Grep(name, pattern, cancelCh)
+
+		case "hashfile":
+			name := meta.Params["name"]
+			algo := meta.Params["algo"]
+			return algorithms.HashFile(name, algo, cancelCh)
+
+		case "compress":
+			name := meta.Params["name"]
+			codec := meta.Params["codec"]
+			return algorithms.CompressFile(name, codec, cancelCh)
+
 
 		default:
 			return j.newResponse(400, "Bad Request", "application/json", []byte(`{"error":"unknown command"}`))

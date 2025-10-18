@@ -51,12 +51,19 @@ func main() {
 	workers.InitPool("sleep", 2, 5)
 	workers.InitPool("loadtest", 2, 3)
 
-
+	// CPU Bound
 	workers.InitPool("isprime", 2, 3)
 	workers.InitPool("factor", 2, 3)
 	workers.InitPool("pi", 1, 2)
 	workers.InitPool("matrixmul", 1, 2)
 	workers.InitPool("mandelbrot", 1, 2)
+
+	// IO Bound
+	workers.InitPool("sortfile", 1, 2)
+	workers.InitPool("wordcount", 1, 2)
+	workers.InitPool("grep", 1, 2)
+	workers.InitPool("hashfile", 1, 2)
+	workers.InitPool("compress", 1, 2)
 
 	// job manager con configuraciones dinámicas
 	jobMgr, err := jobs.NewJobManager("data/jobs_journal.jsonl", qDepth, maxTotal)
@@ -90,6 +97,13 @@ func main() {
 	srv.Router.Handle("/matrixmul", handlers.MatrixHandler)
 	srv.Router.Handle("/mandelbrot", handlers.MandelbrotHandler)
 
+
+	// IO Bound
+	srv.Router.Handle("/sortfile", handlers.SortFileHandler)
+	srv.Router.Handle("/wordcount", handlers.WordCountHandler)
+	srv.Router.Handle("/grep", handlers.GrepHandler)
+	srv.Router.Handle("/hashfile", handlers.HashFileHandler)
+	srv.Router.Handle("/compress", handlers.CompressHandler)
 
 	// jobs endpoints
 	srv.Router.Handle("/jobs/submit", handlers.JobsSubmitHandler)
