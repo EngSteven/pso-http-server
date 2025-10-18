@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/EngSteven/pso-http-server/internal/handlers"
 	"github.com/EngSteven/pso-http-server/internal/jobs"
@@ -10,28 +11,44 @@ import (
 	"github.com/EngSteven/pso-http-server/internal/workers"
 )
 
+func getenvInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	// create server
+	// configuraciones dinámicas
+	workersFib := getenvInt("WORKERS_FIBONACCI", 2)
+	queueFib := getenvInt("QUEUE_FIBONACCI", 5)
+	qDepth := getenvInt("QUEUE_DEPTH", 50)
+	maxTotal := getenvInt("MAX_TOTAL", 150)
+
+	timeoutFib := getenvInt("TIMEOUT_FIBONACCI", 3000)
+	workers.SetTimeout("fibonacci", timeoutFib)
+
+	// crear servidor
 	srv := server.NewServer(":" + port)
 
-	// init pools
-	workers.InitPool("fibonacci", 2, 5)
+	// init pools (puedes añadir más)
+	workers.InitPool("fibonacci", workersFib, queueFib)
 	workers.InitPool("createfile", 2, 5)
-
 	workers.InitPool("isprime", 2, 5)
 	workers.InitPool("factor", 2, 5)
 	workers.InitPool("pi", 1, 2)
 	workers.InitPool("matrixmul", 2, 3)
-	workers.InitPool("mandelbrot", 2, 2) 
+	workers.InitPool("mandelbrot", 2, 2)
 
-
-	// init job manager: journal path and queue depth per priority (e.g., 50 each, max total 150)
-	jobMgr, err := jobs.NewJobManager("data/jobs_journal.jsonl", 50, 150)
+	// job manager con configuraciones dinámicas
+	jobMgr, err := jobs.NewJobManager("data/jobs_journal.jsonl", qDepth, maxTotal)
 	if err != nil {
 		log.Fatalf("failed to init job manager: %v", err)
 	}

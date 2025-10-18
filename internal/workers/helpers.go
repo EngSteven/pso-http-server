@@ -33,3 +33,7 @@ func HandlePoolSubmit(poolName string, job JobFunc, priority int) *types.Respons
 
 	return resp
 }
+
+func SetTimeout(name string, ms int) {
+	defaultTimeouts[name] = ms
+}
