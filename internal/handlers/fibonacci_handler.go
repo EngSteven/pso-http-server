@@ -30,6 +30,16 @@ func FibonacciHandler(req *types.Request) *types.Response {
 		return algorithms.CalculateFibonacci(n, cancelCh)
 	}
 
+	// obtiene la prioridad en caso de ser dada, sino, prioridad normal por defecto
+	prioStr := req.Query.Get("priority")
+	prio := workers.PriorityNormal
+	switch prioStr {
+		case "high":
+			prio = workers.PriorityHigh
+		case "low":
+			prio = workers.PriorityLow
+		}
+
 	// Maneja el pool y los posibles errores 
-	return workers.HandlePoolSubmit("fibonacci", jobFn, workers.PriorityNormal)
+	return workers.HandlePoolSubmit("fibonacci", jobFn, prio)
 }

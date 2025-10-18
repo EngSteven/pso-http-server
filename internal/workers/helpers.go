@@ -18,7 +18,7 @@ func HandlePoolSubmit(poolName string, job JobFunc, priority int) *types.Respons
 			return server.NewResponse(503, "Service Unavailable", "application/json",
 				[]byte(`{"error":"queue full"}`))
 		case ErrTimeout:
-			return server.NewResponse(500, "Internal Server Error", "application/json",
+			return server.NewResponse(408, "Internal Server Error", "application/json",
 				[]byte(`{"error":"job timeout"}`))
 		default:
 			return server.NewResponse(500, "Internal Server Error", "application/json",
