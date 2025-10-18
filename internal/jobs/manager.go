@@ -329,7 +329,28 @@ func (j *JobManager) wrapJob(meta *JobMeta) workers.JobFunc {
 			max, _ := strconv.Atoi(meta.Params["max"])
 			return algorithms.GenerateRandom(count, min, max, cancelCh)
 
-			
+		case "timestamp":
+			return algorithms.GetTimestamp(cancelCh)
+
+		case "hash":
+			text := meta.Params["text"]
+			return algorithms.HashText(text, cancelCh)
+
+		case "simulate":
+			seconds, _ := strconv.Atoi(meta.Params["seconds"])
+			taskName := meta.Params["task"]
+			return algorithms.SimulateWork(seconds, taskName, cancelCh)
+
+		case "sleep":
+			seconds, _ := strconv.Atoi(meta.Params["seconds"])
+			return algorithms.Sleep(seconds, cancelCh)
+		
+		case "loadtest":
+			taskCount, _ := strconv.Atoi(meta.Params["tasks"])
+			sleepSeconds, _ := strconv.Atoi(meta.Params["sleep"])
+			return algorithms.LoadTest(taskCount, sleepSeconds, cancelCh)
+
+
 		default:
 			return j.newResponse(400, "Bad Request", "application/json", []byte(`{"error":"unknown command"}`))
 		}
