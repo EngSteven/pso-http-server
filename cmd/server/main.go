@@ -52,11 +52,11 @@ func main() {
 	workers.InitPool("loadtest", 2, 3)
 
 
-	workers.InitPool("isprime", 2, 5)
-	workers.InitPool("factor", 2, 5)
+	workers.InitPool("isprime", 2, 3)
+	workers.InitPool("factor", 2, 3)
 	workers.InitPool("pi", 1, 2)
-	workers.InitPool("matrixmul", 2, 3)
-	workers.InitPool("mandelbrot", 2, 2)
+	workers.InitPool("matrixmul", 1, 2)
+	workers.InitPool("mandelbrot", 1, 2)
 
 	// job manager con configuraciones dinámicas
 	jobMgr, err := jobs.NewJobManager("data/jobs_journal.jsonl", qDepth, maxTotal)

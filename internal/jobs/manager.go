@@ -349,7 +349,32 @@ func (j *JobManager) wrapJob(meta *JobMeta) workers.JobFunc {
 			taskCount, _ := strconv.Atoi(meta.Params["tasks"])
 			sleepSeconds, _ := strconv.Atoi(meta.Params["sleep"])
 			return algorithms.LoadTest(taskCount, sleepSeconds, cancelCh)
+		
+		case "isprime":
+			n, _ := strconv.ParseInt(meta.Params["n"], 10, 64)
+			method := meta.Params["method"]
+			return algorithms.IsPrime(n, method, cancelCh)
 
+		case "factor":
+			n, _ := strconv.ParseInt(meta.Params["n"], 10, 64)
+			return algorithms.Factorize(n, cancelCh)
+
+		case "pi":
+			digits, _ := strconv.Atoi(meta.Params["digits"])
+			return algorithms.CalculatePi(digits, cancelCh)
+
+
+		case "mandelbrot":
+			width, _ := strconv.Atoi(meta.Params["width"])
+			height, _ := strconv.Atoi(meta.Params["height"])
+			maxIter, _ := strconv.Atoi(meta.Params["max_iter"])
+			save := meta.Params["save"] == "true" || meta.Params["save"] == "1"
+			return algorithms.Mandelbrot(width, height, maxIter, save, cancelCh)
+
+		case "matrixmul":
+			size, _ := strconv.Atoi(meta.Params["size"])
+			seed, _ := strconv.ParseInt(meta.Params["seed"], 10, 64)
+			return algorithms.MatrixMultiply(size, seed, cancelCh)
 
 		default:
 			return j.newResponse(400, "Bad Request", "application/json", []byte(`{"error":"unknown command"}`))
