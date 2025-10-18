@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -300,19 +299,37 @@ func (j *JobManager) wrapJob(meta *JobMeta) workers.JobFunc {
 		case "fibonacci":
 			n, _ := strconv.Atoi(meta.Params["num"])
 			return algorithms.CalculateFibonacci(n, cancelCh)
+		
 		case "createfile":
 			name := meta.Params["name"]
 			content := meta.Params["content"]
 			repeat := 1
-			if rr, ok := meta.Params["repeat"]; ok {
-				if v, err := strconv.Atoi(rr); err == nil && v > 0 {
+			if r, ok := meta.Params["repeat"]; ok {
+				if v, err := strconv.Atoi(r); err == nil && v > 0 {
 					repeat = v
 				}
 			}
-			full := strings.Repeat(content+"\n", repeat)
-			_ = os.WriteFile(name, []byte(full), 0644)
-			data, _ := json.Marshal(map[string]string{"file": name, "message": "file created"})
-			return j.newResponse(200, "OK", "application/json", data)
+			return algorithms.CreateFile(name, content, repeat, cancelCh)
+
+		case "deletefile":
+			name := meta.Params["name"]
+			return algorithms.DeleteFile(name, cancelCh)
+
+		case "reverse":
+			text := meta.Params["text"]
+			return algorithms.ReverseText(text, cancelCh)
+
+		case "toupper":
+			text := meta.Params["text"]
+			return algorithms.ToUpper(text, cancelCh)
+
+		case "random":
+			count, _ := strconv.Atoi(meta.Params["count"])
+			min, _ := strconv.Atoi(meta.Params["min"])
+			max, _ := strconv.Atoi(meta.Params["max"])
+			return algorithms.GenerateRandom(count, min, max, cancelCh)
+
+			
 		default:
 			return j.newResponse(400, "Bad Request", "application/json", []byte(`{"error":"unknown command"}`))
 		}

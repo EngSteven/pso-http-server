@@ -1,26 +1,22 @@
 package handlers
 
 import (
-	"encoding/json"
-	"strings"
-
-	"github.com/EngSteven/pso-http-server/internal/server"
+	"github.com/EngSteven/pso-http-server/internal/algorithms"
 	"github.com/EngSteven/pso-http-server/internal/types"
+	"github.com/EngSteven/pso-http-server/internal/workers"
 )
 
-type UpperResponse struct {
-	Input  string `json:"input"`
-	Output string `json:"output"`
-}
-
+// ToUpperHandler maneja /toupper?text=...
 func ToUpperHandler(req *types.Request) *types.Response {
 	text := req.Query.Get("text")
 	if text == "" {
-		body := []byte(`{"error": "missing parameter: text"}`)
-		return server.NewResponse(400, "Bad Request", "application/json", body)
+		return algorithms.ToUpper("", nil) // validación delegada
 	}
 
-	resp := UpperResponse{Input: text, Output: strings.ToUpper(text)}
-	body, _ := json.MarshalIndent(resp, "", "  ")
-	return server.NewResponse(200, "OK", "application/json", body)
+	jobFn := func(cancelCh <-chan struct{}) *types.Response {
+		return algorithms.ToUpper(text, cancelCh)
+	}
+
+	// Pool "reverse" puede compartirse entre transformaciones ligeras
+	return workers.HandlePoolSubmit("reverse", jobFn, workers.PriorityNormal)
 }

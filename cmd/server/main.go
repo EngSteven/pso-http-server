@@ -38,9 +38,14 @@ func main() {
 	// crear servidor
 	srv := server.NewServer(":" + port)
 
-	// init pools (puedes añadir más)
+	// init pools 
 	workers.InitPool("fibonacci", workersFib, queueFib)
 	workers.InitPool("createfile", 2, 5)
+	workers.InitPool("deletefile", 2, 5)
+	workers.InitPool("reverse", 2, 5)
+	workers.InitPool("toupper", 2, 5)
+	workers.InitPool("random", 2, 5)
+
 	workers.InitPool("isprime", 2, 5)
 	workers.InitPool("factor", 2, 5)
 	workers.InitPool("pi", 1, 2)
@@ -58,12 +63,13 @@ func main() {
 	srv.Router.Handle("/help", handlers.HelpHandler)
 	srv.Router.Handle("/status", handlers.StatusHandler)
 	srv.Router.Handle("/metrics", handlers.MetricsHandler)
-	
-	srv.Router.Handle("/reverse", handlers.ReverseHandler)
-	srv.Router.Handle("/toupper", handlers.ToUpperHandler)
+
 	srv.Router.Handle("/fibonacci", handlers.FibonacciHandler)
 	srv.Router.Handle("/createfile", handlers.CreateFileHandler)
 	srv.Router.Handle("/deletefile", handlers.DeleteFileHandler)
+	srv.Router.Handle("/reverse", handlers.ReverseHandler)
+	srv.Router.Handle("/toupper", handlers.ToUpperHandler)
+	srv.Router.Handle("/random", handlers.RandomHandler)
 
 	//  CPU-bound
 	srv.Router.Handle("/isprime", handlers.IsPrimeHandler)
@@ -79,7 +85,7 @@ func main() {
 	srv.Router.Handle("/jobs/result", handlers.JobsResultHandler)
 	srv.Router.Handle("/jobs/cancel", handlers.JobsCancelHandler)
 
-	log.Printf("🚀 Servidor escuchando en http://localhost:%s\n", port)
+	log.Printf("Servidor escuchando en http://localhost:%s\n", port)
 	if err := srv.Start(); err != nil {
 		log.Fatalf("Error al iniciar servidor: %v", err)
 	}

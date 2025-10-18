@@ -1,30 +1,22 @@
 package handlers
 
 import (
-	"encoding/json"
-	"github.com/EngSteven/pso-http-server/internal/server"
+	"github.com/EngSteven/pso-http-server/internal/algorithms"
 	"github.com/EngSteven/pso-http-server/internal/types"
+	"github.com/EngSteven/pso-http-server/internal/workers"
 )
 
-type ReverseResponse struct {
-	Input  string `json:"input"`
-	Output string `json:"output"`
-}
-
+// ReverseHandler maneja /reverse?text=...
 func ReverseHandler(req *types.Request) *types.Response {
 	text := req.Query.Get("text")
 	if text == "" {
-		body := []byte(`{"error": "missing parameter: text"}`)
-		return server.NewResponse(400, "Bad Request", "application/json", body)
+		return algorithms.ReverseText("", nil) // delega validación al algoritmo
 	}
 
-	// Reversar string
-	runes := []rune(text)
-	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-		runes[i], runes[j] = runes[j], runes[i]
+	jobFn := func(cancelCh <-chan struct{}) *types.Response {
+		return algorithms.ReverseText(text, cancelCh)
 	}
 
-	resp := ReverseResponse{Input: text, Output: string(runes)}
-	body, _ := json.MarshalIndent(resp, "", "  ")
-	return server.NewResponse(200, "OK", "application/json", body)
+	// Usa el pool "reverse" (puedes definirlo en main.go o compartir con CPU livianos)
+	return workers.HandlePoolSubmit("reverse", jobFn, workers.PriorityNormal)
 }
