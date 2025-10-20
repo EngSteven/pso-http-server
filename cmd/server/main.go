@@ -65,6 +65,11 @@ func main() {
 	workers.InitPool("hashfile", 1, 2)
 	workers.InitPool("compress", 1, 2)
 
+	// init job manager: journal path and queue depth per priority (e.g., 50 each, max total 150)
+	if err := os.MkdirAll("data", 0755); err != nil {
+		log.Fatalf("failed to create data directory: %v", err)
+	}
+
 	// job manager con configuraciones dinámicas
 	jobMgr, err := jobs.NewJobManager("data/jobs_journal.jsonl", qDepth, maxTotal)
 	if err != nil {

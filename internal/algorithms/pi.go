@@ -13,7 +13,7 @@ import (
 func CalculatePi(digits int, cancelCh <-chan struct{}) *types.Response {
 	start := time.Now()
 
-	if digits <= 0 || digits > 10000 {
+	if digits <= 0 || digits > 100000 {
 		return server.NewResponse(400, "Bad Request", "application/json",
 			[]byte(`{"error":"invalid parameter: digits must be between 1 and 10000"}`))
 	}

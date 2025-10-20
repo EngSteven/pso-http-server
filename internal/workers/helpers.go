@@ -5,6 +5,11 @@ import "github.com/EngSteven/pso-http-server/internal/types"
 
 // HandlePoolSubmit ejecuta un job en el pool indicado y devuelve una respuesta HTTP estándar.
 func HandlePoolSubmit(poolName string, job JobFunc, priority int) *types.Response {
+	if job == nil {
+		return server.NewResponse(400, "Bad Request", "application/json",
+			[]byte(`{"error":"nil job function"}`))
+	}
+
 	pool := GetPool(poolName)
 	if pool == nil {
 		// fallback: ejecuta inline si no hay pool disponible

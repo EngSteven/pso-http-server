@@ -65,6 +65,12 @@ func SortFile(name, algo string, cancelCh <-chan struct{}) *types.Response {
 	}
 	readTime := time.Since(readStart)
 
+	// Si no se obtuvo ningún número, devolver error 400
+	if len(numbers) == 0 {
+			return server.NewResponse(400, "Bad Request", "application/json",
+					[]byte(`{"error":"no valid numeric data found in file"}`))
+	}
+
 	// --- 2️⃣ Ordenar ---
 	sortStart := time.Now()
 	switch algo {

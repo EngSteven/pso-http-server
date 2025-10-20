@@ -10,6 +10,10 @@ import 	(
 
 // Función independiente que calcula la serie Fibonacci y devuelve el JSON
 func CalculateFibonacci(n int, cancelCh <-chan struct{}) *types.Response {
+	if n <= 0 {
+		return server.NewResponse(400, "Bad Request", "application/json",
+			[]byte(`{"error":"invalid parameter: n must be > 0"}`))
+	}
 	start := time.Now()
 	series := make([]int, n)
 	if n > 0 {

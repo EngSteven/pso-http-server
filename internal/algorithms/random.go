@@ -18,9 +18,9 @@ func GenerateRandom(count, min, max int, cancelCh <-chan struct{}) *types.Respon
 		return server.NewResponse(400, "Bad Request", "application/json",
 			[]byte(`{"error":"invalid parameter: count must be > 0"}`))
 	}
-	if min > max {
+	if min >= max {
 		return server.NewResponse(400, "Bad Request", "application/json",
-			[]byte(`{"error":"invalid range: min must be <= max"}`))
+			[]byte(`{"error":"invalid range: min must be < max"}`))
 	}
 
 	select {

@@ -29,7 +29,7 @@ make run
 3. Desde el root del proyecto ejecute para correr las pruebas
 
 ```bash 
-falta
+make test-all
 ```
 
 ## Arquitectura 
