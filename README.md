@@ -14,7 +14,7 @@ https://documenter.getpostman.com/view/37666062/2sB3QQK8Eh
 
 ## Compilación y Ejecución
 
-Importante, para compilar y ejecutar el proyecto debe hacerlo de una terminal que soporte Linux
+Importante, para compilar y ejecutar el proyecto debe hacerlo desde una terminal que soporte Linux
 
 1. Desde el root del proyecto ejecute para compilar el servidor:
 
@@ -25,6 +25,68 @@ make build
 2. Desde el root del proyecto ejecute para correr el servidor:
 
 ```bash 
+make run
+```
+
+## Configuración del Servidor
+
+El servidor HTTP permite ajustar su comportamiento mediante **variables de entorno**.  
+Todas las configuraciones son **opcionales** y pueden **combinarse libremente**.  
+Si no se especifican, el servidor utilizará los **valores por defecto** indicados en la tabla.
+
+| Variable                 | Descripción                                                               | Valor por defecto |
+|---------------------------|---------------------------------------------------------------------------|-------------------|
+| `PORT`                    | Puerto HTTP de escucha del servidor                                       | `8080`            |
+| `DATA_DIR` *(opcional)*   | Ruta donde se guardan archivos, datasets y el journal de jobs             | `data/`           |
+| `QUEUE_DEPTH`             | Profundidad global de las colas del *Job Manager*                         | `50`              |
+| `MAX_TOTAL`               | Máximo total de trabajos concurrentes aceptados por el servidor           | `150`             |
+| `WORKERS_<COMANDO>`       | Número de workers para un comando específico (ej. `WORKERS_PI=4`)         | Valor definido en código |
+| `QUEUE_<COMANDO>`         | Profundidad de la cola del comando (ej. `QUEUE_SORTFILE=3`)               | Valor definido en código |
+| `TIMEOUT_<COMANDO>`       | Tiempo máximo de ejecución en milisegundos (ej. `TIMEOUT_HASHFILE=8000`)  | Valor definido en código |
+
+>  Cualquier comando definido en el servidor (CPU-bound o IO-bound) puede personalizarse:
+> - `/fibonacci`, `/isprime`, `/pi`, `/matrixmul`, `/mandelbrot`
+> - `/sortfile`, `/wordcount`, `/grep`, `/hashfile`, `/compress`
+> - `/reverse`, `/toupper`, `/createfile`, `/deletefile`, etc.
+
+---
+
+### Ejemplos de uso
+
+1. Cambiar el puerto del servidor:
+```bash
+export PORT=9090
+make run
+```
+
+2. Personalizar el pool del comando pi:
+```bash
+export WORKERS_PI=4
+export QUEUE_PI=3
+export TIMEOUT_PI=8000
+make run
+```
+
+3. Ajustar la profundidad global de colas y el máximo total:
+```bash
+export QUEUE_DEPTH=100
+export MAX_TOTAL=300
+make run
+```
+
+4. Redefinir la ruta base de datos:
+```bash
+export DATA_DIR=/tmp/pso_data
+make run
+```
+
+
+5. Personalizar múltiples comandos a la vez:
+```bash
+export WORKERS_SORTFILE=2
+export QUEUE_SORTFILE=5
+export TIMEOUT_SORTFILE=7000
+export WORKERS_ISPRIME=3
 make run
 ```
 
