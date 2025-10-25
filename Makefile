@@ -28,7 +28,7 @@ run:
 # ------------------------------------------------------------
 test-all:
 	@echo "===================================================="
-	@echo "🧪 Running unit tests (algorithms only)..."
+	@echo "Running all tests with coverage"
 	@echo "===================================================="
 	go test ./tests -v -count=1 \
 	    -coverpkg=github.com/EngSteven/pso-http-server/internal/algorithms \

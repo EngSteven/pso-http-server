@@ -14,6 +14,8 @@ https://documenter.getpostman.com/view/37666062/2sB3QQK8Eh
 
 ## Compilación y Ejecución
 
+Importante, para compilar y ejecutar el proyecto debe hacerlo de una terminal que soporte Linux
+
 1. Desde el root del proyecto ejecute para compilar el servidor:
 
 ```bash 
@@ -26,10 +28,24 @@ make build
 make run
 ```
 
-3. Desde el root del proyecto ejecute para correr las pruebas
+## Correr todas las pruebas
+
+1. Genere los archivos grandes para las pruebas de rendimiento:
+
+```bash
+go run scripts/gen_dataset.go
+```
+
+2. Desde el root del proyecto ejecute para correr las pruebas
 
 ```bash 
 make test-all
+```
+
+3. Opción extra para incrementar la carga en las pruebas de rendimiento
+
+```bash 
+PERF_LEVEL=heavy make test-all
 ```
 
 ## Arquitectura 

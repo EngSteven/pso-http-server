@@ -1,5 +1,14 @@
 package tests
 
+// ============================================================
+// TEST SUITE — BENCHMARK DE LATENCIA Y THROUGHPUT
+// Proyecto: PSO_PY01b — Servidor HTTP concurrente
+// Descripción:
+//   Este archivo ejecuta perfiles de carga para medir latencia y throughput
+//   en distintos endpoints del servidor HTTP. Incluye perfiles low/medium/high
+//   y calcula percentiles p50, p95 y p99 de tiempo de respuesta.
+// ============================================================
+
 import (
 	"net/http"
 	"sort"
@@ -9,9 +18,11 @@ import (
 )
 
 // ============================================================
-// 📊 BLOQUE — MÉTRICAS DE LATENCIA Y THROUGHPUT
+// BLOQUE — PERFILES DE CARGA
 // ============================================================
 
+// loadProfile define un perfil de prueba de carga con nombre,
+// cantidad total de solicitudes, concurrencia y endpoint.
 type loadProfile struct {
 	name       string
 	requests   int
@@ -19,12 +30,18 @@ type loadProfile struct {
 	endpoint   string
 }
 
+// Perfiles de carga predeterminados
 var loadProfiles = []loadProfile{
-    {"low", 10, 2, "/pi?digits=1000"},
-    {"medium", 50, 5, "/matrixmul?size=200"},
-    {"high", 100, 10, "/sortfile?name=data_big.txt&algo=merge"},
+	{"low", 10, 2, "/pi?digits=1000"},
+	{"medium", 50, 5, "/matrixmul?size=200"},
+	{"high", 100, 10, "/sortfile?name=data_big.txt&algo=merge"},
 }
 
+// ============================================================
+// BLOQUE — FUNCIONES AUXILIARES
+// ============================================================
+
+// percentile calcula el percentil p (0.0–1.0) de un conjunto de latencias.
 func percentile(latencies []float64, p float64) float64 {
 	if len(latencies) == 0 {
 		return 0
@@ -34,8 +51,12 @@ func percentile(latencies []float64, p float64) float64 {
 	return latencies[k]
 }
 
+// runLoadTest ejecuta un perfil de carga completo y calcula métricas.
 func runLoadTest(t *testing.T, profile loadProfile) {
-	t.Logf("🚀 Starting load profile: %s (%d reqs, %d concurrent)", profile.name, profile.requests, profile.concurrent)
+	setupIntegration(t)
+
+	t.Logf("\n--- [RUNNING] Perfil de carga: %s (%d solicitudes, %d concurrentes) ---",
+		profile.name, profile.requests, profile.concurrent)
 
 	var wg sync.WaitGroup
 	results := make(chan float64, profile.requests)
@@ -51,11 +72,11 @@ func runLoadTest(t *testing.T, profile loadProfile) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			s1 := time.Now()
+			begin := time.Now()
 			resp, err := http.Get(baseURL + profile.endpoint)
 			if err == nil {
 				resp.Body.Close()
-				results <- float64(time.Since(s1).Milliseconds())
+				results <- float64(time.Since(begin).Milliseconds())
 			} else {
 				results <- -1 // marcar error
 			}
@@ -66,7 +87,7 @@ func runLoadTest(t *testing.T, profile loadProfile) {
 	close(results)
 
 	elapsed := time.Since(start).Seconds()
-	latencies := []float64{}
+	var latencies []float64
 	var errors int
 
 	for l := range results {
@@ -79,32 +100,43 @@ func runLoadTest(t *testing.T, profile loadProfile) {
 
 	total := len(latencies)
 	if total == 0 {
-		t.Fatalf("no successful responses in profile %s", profile.name)
+		t.Fatalf("[ERROR] No hubo respuestas exitosas en el perfil %s", profile.name)
 	}
 
-	// Métricas básicas
+	// Cálculo de métricas
 	p50 := percentile(latencies, 0.50)
 	p95 := percentile(latencies, 0.95)
 	p99 := percentile(latencies, 0.99)
 	throughput := float64(total) / elapsed
 
 	t.Logf(`
-📊 Profile: %s
-  Requests: %d (Errors: %d)
-  Duration: %.2fs
-  Throughput: %.2f req/s
-  Latency (p50): %.2f ms
-  Latency (p95): %.2f ms
-  Latency (p99): %.2f ms
+[RESULTADOS] Perfil: %s
+  Requests totales: %d (Errores: %d)
+  Duración total:   %.2fs
+  Throughput:       %.2f req/s
+  Latencia p50:     %.2f ms
+  Latencia p95:     %.2f ms
+  Latencia p99:     %.2f ms
 `, profile.name, total, errors, elapsed, throughput, p50, p95, p99)
+
+	t.Logf("[OK] Perfil '%s' completado correctamente", profile.name)
 }
 
-// ------------------------------------------------------------
-// 🚦 Entrypoint del benchmark
-// ------------------------------------------------------------
+// ============================================================
+// BLOQUE — EJECUCIÓN DE TODOS LOS PERFILES
+// ============================================================
 
+// TestBenchmark_Profiles ejecuta todos los perfiles definidos en secuencia.
 func TestBenchmark_Profiles(t *testing.T) {
+	setupIntegration(t)
+
+	t.Log("\n============================================================")
+	t.Log("BENCHMARK DE CARGA — Iniciando perfiles (low, medium, high)")
+	t.Log("============================================================")
+
 	for _, prof := range loadProfiles {
 		runLoadTest(t, prof)
 	}
+
+	t.Log("\n[OK] Todos los perfiles de carga completados exitosamente.")
 }

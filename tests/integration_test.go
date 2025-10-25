@@ -1,10 +1,18 @@
 package tests
 
+// ============================================================
+// TEST SUITE — PRUEBAS DE INTEGRACIÓN DEL SERVIDOR HTTP
+// Proyecto: PSO_PY01b — Servidor HTTP concurrente
+// Descripción:
+//   Este archivo contiene las pruebas de integración completas del
+//   servidor embebido. Se lanza un servidor HTTP real en background
+//   y se validan endpoints, jobs y concurrencia.
+// ============================================================
+
 import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"testing"
@@ -22,39 +30,33 @@ var (
 	baseURL       = "http://localhost:8080"
 	serverStarted = false
 	testServer    *server.Server
-	listener      net.Listener
 )
 
-// ------------------------------------------------------------
-// 🟩 Inicio / fin del servidor dentro del mismo proceso
-// ------------------------------------------------------------
+// ============================================================
+// CONFIGURACIÓN DEL SERVIDOR EMBEBIDO
+// ============================================================
 
-func TestMain(m *testing.M) {
-	fmt.Println("🚀 Iniciando servidor embebido para pruebas...")
-
-	// Inicia el servidor en background
-	go startEmbeddedServer()
-
-	// Esperar a que el servidor esté disponible
-	waitForServer()
-
-	// Ejecutar los tests
-	code := m.Run()
-
-	// Finalizar servidor
-	fmt.Println("🧹 Deteniendo servidor embebido...")
-	if listener != nil {
-		_ = listener.Close()
+// setupIntegration levanta el servidor embebido una sola vez.
+func setupIntegration(t *testing.T) {
+	if serverStarted {
+		return // evitar reinicios
 	}
-	os.Exit(code)
+
+	t.Log("\n============================================================")
+	t.Log("SETUP: Iniciando servidor embebido para pruebas de integración")
+	t.Log("============================================================")
+
+	go startEmbeddedServer()
+	waitForServer(t)
+	t.Log("Servidor embebido disponible en:", baseURL)
 }
 
-// Inicia el servidor TCP real en una goroutine (instrumentado)
+
+// startEmbeddedServer inicializa rutas, pools y job manager.
 func startEmbeddedServer() {
-	// Crear router base
 	r := router.NewRouter()
 
-	// 🧩 Inicializar pools mínimos para los handlers
+	// Inicialización de pools básicos y avanzados
 	workers.InitPool("fibonacci", 2, 5)
 	workers.InitPool("reverse", 2, 5)
 	workers.InitPool("toupper", 2, 5)
@@ -64,37 +66,32 @@ func startEmbeddedServer() {
 	workers.InitPool("createfile", 2, 5)
 	workers.InitPool("deletefile", 2, 5)
 	workers.InitPool("hash", 2, 5)
-
-	// CPU / IO extra (opcional según tus handlers)
 	workers.InitPool("isprime", 1, 2)
 	workers.InitPool("factor", 1, 2)
 	workers.InitPool("pi", 1, 2)
 	workers.InitPool("matrixmul", 1, 2)
 	workers.InitPool("mandelbrot", 1, 2)
-
 	workers.InitPool("sortfile", 1, 2)
 	workers.InitPool("wordcount", 1, 2)
 	workers.InitPool("grep", 1, 2)
 	workers.InitPool("hashfile", 1, 2)
 	workers.InitPool("compress", 1, 2)
 
-	// 🔹 Inicializar Job Manager (igual que en main.go)
+	// Job Manager
 	os.MkdirAll("data", 0755)
 	jobMgr, err := jobs.NewJobManager("data/jobs_journal_test.jsonl", 20, 50)
 	if err != nil {
-		fmt.Println("❌ Error al iniciar JobManager:", err)
+		fmt.Println("Error al iniciar JobManager:", err)
 		return
 	}
 	handlers.InitializeJobManager(jobMgr)
 
-	// Rutas principales
+	// Registrar rutas HTTP
 	r.Handle("/reverse", handlers.ReverseHandler)
 	r.Handle("/toupper", handlers.ToUpperHandler)
 	r.Handle("/status", handlers.StatusHandler)
 	r.Handle("/metrics", handlers.MetricsHandler)
 	r.Handle("/help", handlers.HelpHandler)
-
-	// Rutas de algoritmos y archivos
 	r.Handle("/createfile", handlers.CreateFileHandler)
 	r.Handle("/deletefile", handlers.DeleteFileHandler)
 	r.Handle("/fibonacci", handlers.FibonacciHandler)
@@ -109,51 +106,45 @@ func startEmbeddedServer() {
 	r.Handle("/simulate", handlers.SimulateHandler)
 	r.Handle("/sleep", handlers.SleepHandler)
 	r.Handle("/loadtest", handlers.LoadTestHandler)
-
-	// IO Bound
 	r.Handle("/sortfile", handlers.SortFileHandler)
 	r.Handle("/wordcount", handlers.WordCountHandler)
 	r.Handle("/grep", handlers.GrepHandler)
 	r.Handle("/hashfile", handlers.HashFileHandler)
 	r.Handle("/compress", handlers.CompressHandler)
-
-	// Jobs (modelo asincrónico)
 	r.Handle("/jobs/submit", handlers.JobsSubmitHandler)
 	r.Handle("/jobs/status", handlers.JobsStatusHandler)
 	r.Handle("/jobs/result", handlers.JobsResultHandler)
 	r.Handle("/jobs/cancel", handlers.JobsCancelHandler)
 
-	// Crear y lanzar servidor embebido
 	s := server.NewServer(":8080")
 	s.Router = r
 	testServer = s
 
 	go func() {
 		if err := s.Start(); err != nil {
-			fmt.Println("❌ Error al iniciar servidor:", err)
+			fmt.Println("Error al iniciar servidor:", err)
 		}
 	}()
 }
 
-// Espera hasta que el servidor responda /status
-func waitForServer() {
+// waitForServer bloquea hasta que /status responda o agote timeout.
+func waitForServer(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		resp, err := http.Get(baseURL + "/status")
 		if err == nil && resp.StatusCode == 200 {
 			resp.Body.Close()
-			fmt.Println("✅ Servidor disponible en", baseURL)
 			serverStarted = true
 			return
 		}
 		if time.Now().After(deadline) {
-			panic("❌ El servidor no respondió en el tiempo esperado")
+			t.Fatal("El servidor no respondió en el tiempo esperado")
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 }
 
-// Helper para decodificar JSON
+// decodeJSONResp convierte una respuesta HTTP a JSON.
 func decodeJSONResp(t *testing.T, resp *http.Response) map[string]interface{} {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -165,10 +156,13 @@ func decodeJSONResp(t *testing.T, resp *http.Response) map[string]interface{} {
 }
 
 // ============================================================
-// 🌐 BLOQUE — PRUEBAS DE INTEGRACIÓN HTTP
+// BLOQUE — PRUEBAS DE INTEGRACIÓN HTTP
 // ============================================================
 
+// TestServer_ReverseEndpoint valida la ruta /reverse con un caso básico.
 func TestServer_ReverseEndpoint(t *testing.T) {
+	setupIntegration(t)
+
 	resp, err := http.Get(baseURL + "/reverse?text=abcd")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -179,7 +173,10 @@ func TestServer_ReverseEndpoint(t *testing.T) {
 	}
 }
 
+// TestServer_ToUpper valida la ruta /toupper con texto simple.
 func TestServer_ToUpper(t *testing.T) {
+	setupIntegration(t)
+
 	resp, err := http.Get(baseURL + "/toupper?text=hola")
 	if err != nil {
 		t.Fatalf("toupper request failed: %v", err)
@@ -190,6 +187,7 @@ func TestServer_ToUpper(t *testing.T) {
 	}
 }
 
+// TestServer_StatusMetricsHelp valida /status, /metrics y /help.
 func TestServer_StatusMetricsHelp(t *testing.T) {
 	endpoints := []string{"/status", "/metrics", "/help"}
 	for _, ep := range endpoints {
@@ -203,9 +201,10 @@ func TestServer_StatusMetricsHelp(t *testing.T) {
 	}
 }
 
+// TestServer_CreateDeleteFile crea y luego elimina un archivo.
 func TestServer_CreateDeleteFile(t *testing.T) {
 	name := "itest.txt"
-	_, _ = http.Get(baseURL + "/createfile?name=" + name + "&content=hi&repeat=1")
+	http.Get(baseURL + "/createfile?name=" + name + "&content=hi&repeat=1")
 	resp, _ := http.Get(baseURL + "/deletefile?name=" + name)
 	data := decodeJSONResp(t, resp)
 	if data["message"] != "file deleted successfully" {
@@ -213,6 +212,7 @@ func TestServer_CreateDeleteFile(t *testing.T) {
 	}
 }
 
+// TestServer_FibonacciIntegration valida la ejecución del endpoint Fibonacci.
 func TestServer_FibonacciIntegration(t *testing.T) {
 	resp, err := http.Get(baseURL + "/fibonacci?num=8")
 	if err != nil {
@@ -224,6 +224,7 @@ func TestServer_FibonacciIntegration(t *testing.T) {
 	}
 }
 
+// TestServer_InvalidPath verifica que rutas inexistentes devuelvan 404 o 400.
 func TestServer_InvalidPath(t *testing.T) {
 	resp, _ := http.Get(baseURL + "/notfound")
 	if resp.StatusCode != 404 && resp.StatusCode != 400 {
@@ -232,9 +233,10 @@ func TestServer_InvalidPath(t *testing.T) {
 }
 
 // ============================================================
-// 🧠 BLOQUE — JOBS (FLOW: SUBMIT → STATUS → RESULT)
+// BLOQUE — JOBS (FLOW: SUBMIT → STATUS → RESULT → CANCEL)
 // ============================================================
 
+// TestJobs_SubmitStatusResultFlow valida flujo completo de un Job.
 func TestJobs_SubmitStatusResultFlow(t *testing.T) {
 	resp, err := http.Get(baseURL + "/jobs/submit?task=fibonacci&num=10")
 	if err != nil {
@@ -244,7 +246,6 @@ func TestJobs_SubmitStatusResultFlow(t *testing.T) {
 	jobID := submitData["job_id"].(string)
 
 	time.Sleep(1 * time.Second)
-
 	resp2, _ := http.Get(baseURL + "/jobs/status?id=" + jobID)
 	statusData := decodeJSONResp(t, resp2)
 	if statusData["status"] != "done" {
@@ -258,6 +259,7 @@ func TestJobs_SubmitStatusResultFlow(t *testing.T) {
 	}
 }
 
+// TestJobs_Cancel prueba cancelación manual de un job en ejecución.
 func TestJobs_Cancel(t *testing.T) {
 	resp, _ := http.Get(baseURL + "/jobs/submit?task=sleep&seconds=5")
 	submit := decodeJSONResp(t, resp)
@@ -271,46 +273,66 @@ func TestJobs_Cancel(t *testing.T) {
 	data := decodeJSONResp(t, resp2)
 	status := data["status"].(string)
 	if status != "canceled" && status != "done" && status != "running" && status != "queued" {
-		t.Errorf("expected canceled, done, running or queued, got %s", status)
+		t.Errorf("unexpected job status: %s", status)
 	}
 }
 
 // ============================================================
-// ⚙️ BLOQUE — CONCURRENCIA
+// BLOQUE — CONCURRENCIA Y POOLS
 // ============================================================
 
+// TestServer_ConcurrentRequests ejecuta múltiples solicitudes simultáneas
+// y acepta tanto 200 (éxito) como 503 (backpressure esperado).
 func TestServer_ConcurrentRequests(t *testing.T) {
-	N := 10
+	setupIntegration(t)
+
+	const N = 10
 	errCh := make(chan error, N)
+
+	t.Logf("\n--- [RUNNING] %d concurrent requests to /reverse ---", N)
+
 	for i := 0; i < N; i++ {
 		go func(i int) {
 			resp, err := http.Get(baseURL + fmt.Sprintf("/reverse?text=req%d", i))
 			if err != nil {
-				errCh <- err
+				errCh <- fmt.Errorf("client %d failed: %v", i, err)
 				return
 			}
-			if resp.StatusCode != 200 {
-				errCh <- fmt.Errorf("bad code %d", resp.StatusCode)
+
+			switch resp.StatusCode {
+			case 200, 503:
+				// ambos son aceptables
+			default:
+				errCh <- fmt.Errorf("client %d unexpected code: %d", i, resp.StatusCode)
 			}
+
 			resp.Body.Close()
 			errCh <- nil
 		}(i)
 	}
+
+	var badCount int
 	for i := 0; i < N; i++ {
 		if err := <-errCh; err != nil {
-			t.Errorf("concurrent request error: %v", err)
+			badCount++
+			t.Error(err)
 		}
+	}
+
+	if badCount == 0 {
+		t.Log("[OK] All concurrent requests handled correctly (200/503)")
+	} else {
+		t.Logf("[WARN] %d requests had unexpected responses", badCount)
 	}
 }
 
+// TestPool_GetPoolInfo_And_DefaultTimeout valida operaciones sobre pools.
 func TestPool_GetPoolInfo_And_DefaultTimeout(t *testing.T) {
-	// Crear un pool nuevo
 	pool := workers.InitPool("testpool", 1, 2)
 	if pool == nil {
 		t.Fatalf("expected valid pool instance")
 	}
 
-	// Obtener información del pool
 	info, err := workers.GetPoolInfo("testpool")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -319,12 +341,10 @@ func TestPool_GetPoolInfo_And_DefaultTimeout(t *testing.T) {
 		t.Errorf("unexpected pool info %+v", info)
 	}
 
-	// Pool inexistente debería dar error
 	if _, err := workers.GetPoolInfo("no_such_pool"); err == nil {
 		t.Errorf("expected error for unknown pool")
 	}
 
-	// DefaultTimeoutFor con clave conocida y desconocida
 	if v := workers.DefaultTimeoutFor("pi"); v <= 0 {
 		t.Errorf("expected timeout > 0 for 'pi'")
 	}
@@ -332,19 +352,16 @@ func TestPool_GetPoolInfo_And_DefaultTimeout(t *testing.T) {
 		t.Errorf("expected fallback 5000, got %d", v)
 	}
 
-	// Verificar GetAllPools devuelve el mapa con nuestro pool
 	all := workers.GetAllPools()
 	if _, ok := all["testpool"]; !ok {
 		t.Errorf("pool 'testpool' not found in map")
 	}
 }
 
-// --- Cobertura de SubmitAndWait y manejo de timeout ---
-
+// TestPool_SubmitAndWait_SuccessAndTimeout cubre éxito y timeout en submit.
 func TestPool_SubmitAndWait_SuccessAndTimeout(t *testing.T) {
 	pool := workers.InitPool("waitpool", 1, 2)
 
-	// Caso exitoso
 	fn := func(cancel <-chan struct{}) *types.Response {
 		return &types.Response{StatusCode: 200}
 	}
@@ -356,7 +373,6 @@ func TestPool_SubmitAndWait_SuccessAndTimeout(t *testing.T) {
 		t.Errorf("expected valid response, got %+v", resp)
 	}
 
-	// Caso de timeout: función que nunca responde
 	fnTimeout := func(cancel <-chan struct{}) *types.Response {
 		time.Sleep(31 * time.Second)
 		return &types.Response{StatusCode: 200}
@@ -367,8 +383,7 @@ func TestPool_SubmitAndWait_SuccessAndTimeout(t *testing.T) {
 	}
 }
 
-// --- Cobertura de InitPool y duplicación ---
-
+// TestPool_InitPool_Duplicate asegura que InitPool devuelva la misma instancia.
 func TestPool_InitPool_Duplicate(t *testing.T) {
 	p1 := workers.InitPool("dupPool", 1, 1)
 	p2 := workers.InitPool("dupPool", 2, 5)
@@ -377,8 +392,7 @@ func TestPool_InitPool_Duplicate(t *testing.T) {
 	}
 }
 
-// --- Cobertura de SetTimeout y HandlePoolSubmit ---
-
+// TestSetTimeout_ModifiesDefault valida que SetTimeout actualice valores globales.
 func TestSetTimeout_ModifiesDefault(t *testing.T) {
 	workers.SetTimeout("customalgo", 1234)
 	v := workers.DefaultTimeoutFor("customalgo")
@@ -386,5 +400,3 @@ func TestSetTimeout_ModifiesDefault(t *testing.T) {
 		t.Errorf("expected timeout 1234, got %d", v)
 	}
 }
-
-
