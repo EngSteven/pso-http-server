@@ -1,3 +1,10 @@
+/*
+Autores: Steven Sequeira Araya, Jefferson Salas Cordero
+Nombre del archivo: concurrency_test.go
+Descripcion: Suite de pruebas de concurrencia que valida comportamiento
+bajo carga, saturacion de colas y cancelaciones multiples simultaneas.
+*/
+
 package tests
 
 // ============================================================
@@ -22,26 +29,41 @@ import (
 // ============================================================
 
 // TestConcurrentClients lanza múltiples clientes simultáneos a distintos endpoints.
+// Entrada: t (*testing.T) - contexto de testing para control y reportes
+// Salida: ninguna (void)
+// Descripcion: Lanza 20 clientes concurrentes al endpoint /reverse para validar
+//
+//	que el servidor maneja concurrencia sin bloqueos ni data races.
+//	Mide tiempo total y cuenta errores. Verifica estabilidad del
+//	servidor bajo carga concurrente simultánea.
+//
 // Objetivo: comprobar que no se bloquea el servidor ni se producen data races.
 func TestConcurrentClients(t *testing.T) {
 	setupIntegration(t)
 
 	const N = 20
+	// === CONFIGURACION DE CONCURRENCIA ===
+	// Preparar sincronización y canal de errores
 	var wg sync.WaitGroup
 	errCh := make(chan error, N)
 
 	t.Logf("\n--- [RUNNING] %d clientes concurrentes sobre /reverse ---", N)
 	start := time.Now()
 
+	// === LANZAMIENTO DE CLIENTES CONCURRENTES ===
+	// Crear N goroutines simultáneas
 	for i := 0; i < N; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			// === REQUEST INDIVIDUAL ===
+			// Ejecutar request con ID único
 			resp, err := http.Get(fmt.Sprintf("%s/reverse?text=req%d", baseURL, i))
 			if err != nil {
 				errCh <- fmt.Errorf("client %d failed: %v", i, err)
 				return
 			}
+			// === VALIDACION DE RESPUESTA ===
 			if resp.StatusCode != 200 {
 				errCh <- fmt.Errorf("client %d bad code: %d", i, resp.StatusCode)
 			}
@@ -50,6 +72,8 @@ func TestConcurrentClients(t *testing.T) {
 		}(i)
 	}
 
+	// === ESPERA Y RECOPILACION ===
+	// Esperar completion y procesar errores
 	wg.Wait()
 	close(errCh)
 
@@ -61,6 +85,7 @@ func TestConcurrentClients(t *testing.T) {
 		}
 	}
 
+	// === REPORTE DE RESULTADOS ===
 	elapsed := time.Since(start)
 	t.Logf("[RESULT] %d concurrent requests completed in %v (errors: %d)", N, elapsed, errCount)
 	if errCount == 0 {
@@ -73,6 +98,14 @@ func TestConcurrentClients(t *testing.T) {
 // ============================================================
 
 // TestJobQueuePressure encola muchos jobs para provocar backpressure
+// Entrada: t (*testing.T) - contexto de testing para logging y validacion
+// Salida: ninguna (void)
+// Descripcion: Envia 30 jobs sleep simultaneos para saturar cola de trabajo.
+//
+//	Verifica que servidor responda 503 cuando cola se llena y
+//	maneje backpressure correctamente. Valida limites de capacidad
+//	del sistema de jobs y comportamiento bajo sobrecarga.
+//
 // y verifica que el servidor responda con 503 cuando la cola se satura.
 func TestJobQueuePressure(t *testing.T) {
 	setupIntegration(t)
@@ -82,16 +115,22 @@ func TestJobQueuePressure(t *testing.T) {
 	fullCount := 0
 
 	t.Logf("\n--- [RUNNING] Saturación de cola con %d jobs ---", totalJobs)
+	// === ENVIO MASIVO DE JOBS ===
+	// Intentar saturar cola con jobs sleep
 	for i := 0; i < totalJobs; i++ {
 		resp, err := http.Get(fmt.Sprintf("%s/jobs/submit?task=sleep&seconds=1", baseURL))
 		if err != nil {
 			t.Fatalf("failed to submit job %d: %v", i, err)
 		}
 
+		// === CLASIFICACION DE RESPUESTAS ===
+		// Contar jobs aceptados vs rechazados por backpressure
 		switch resp.StatusCode {
 		case 503:
+			// === COLA LLENA - BACKPRESSURE ===
 			fullCount++
 		case 200:
+			// === JOB ACEPTADO ===
 			submitted++
 		default:
 			t.Logf("[WARN] Unexpected code %d on job %d", resp.StatusCode, i)
@@ -99,8 +138,10 @@ func TestJobQueuePressure(t *testing.T) {
 		resp.Body.Close()
 	}
 
+	// === REPORTE DE SATURACION ===
 	t.Logf("[RESULT] Jobs OK: %d, Queue full (503): %d", submitted, fullCount)
 
+	// === VALIDACIONES DE COMPORTAMIENTO ===
 	if submitted == 0 {
 		t.Errorf("[ERROR] Ningún job fue aceptado; revisar configuración del JobManager")
 	}
@@ -114,6 +155,14 @@ func TestJobQueuePressure(t *testing.T) {
 // ============================================================
 
 // TestMetricsAndStatusDuringLoad asegura que /metrics y /status
+// Entrada: t (*testing.T) - contexto de testing para validacion
+// Salida: ninguna (void)
+// Descripcion: Encola jobs largos en background y consulta /metrics y /status
+//
+//	repetidamente durante ejecucion. Verifica que endpoints de
+//	monitoreo permanezcan operativos bajo carga. Valida que sistema
+//	de metricas no se vea afectado por jobs en ejecucion.
+//
 // respondan correctamente mientras hay jobs ejecutándose en segundo plano.
 func TestMetricsAndStatusDuringLoad(t *testing.T) {
 	setupIntegration(t)
@@ -154,6 +203,14 @@ func TestMetricsAndStatusDuringLoad(t *testing.T) {
 // ============================================================
 
 // TestCancelMultipleJobs verifica que múltiples cancelaciones simultáneas
+// Entrada: t (*testing.T) - contexto de testing para control y verificacion
+// Salida: ninguna (void)
+// Descripcion: Encola 5 jobs sleep de larga duracion y los cancela
+//
+//	simultaneamente con goroutines concurrentes. Verifica que
+//	cancelaciones multiples se manejen sin errores, bloqueos o
+//	estados inconsistentes en el sistema de jobs.
+//
 // se manejen correctamente sin errores ni bloqueos.
 func TestCancelMultipleJobs(t *testing.T) {
 	setupIntegration(t)

@@ -1,3 +1,11 @@
+/*
+Autores: Steven Sequeira Araya, Jefferson Salas Cordero
+Nombre del archivo: main.go
+Descripcion: Archivo principal del servidor HTTP PSO que inicializa y configura
+el servidor con pools de workers dinamicos para ejecutar algoritmos computacionales
+intensivos de forma asincrona y eficiente.
+*/
+
 package main
 
 import (
@@ -13,7 +21,15 @@ import (
 	"github.com/EngSteven/pso-http-server/internal/workers"
 )
 
-// getenvInt obtiene una variable de entorno como entero, con valor por defecto.
+// getenvInt obtiene una variable de entorno como entero con valor por defecto.
+// Entrada: key (string) - nombre de la variable de entorno
+//
+//	def (int) - valor por defecto si la variable no existe
+//
+// Salida: int - valor de la variable de entorno convertido a entero o valor por defecto
+// Descripcion: Lee una variable de entorno y la convierte a entero. Si la variable
+//
+//	no existe o no es un numero valido, retorna el valor por defecto.
 func getenvInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -23,8 +39,22 @@ func getenvInt(key string, def int) int {
 	return def
 }
 
-// getConfigForCommand permite sobreescribir dinámicamente la configuración de cada comando.
-// Busca WORKERS_<CMD>, QUEUE_<CMD> y TIMEOUT_<CMD> en el entorno.
+// getConfigForCommand permite configuracion dinamica por comando individual.
+// Entrada: cmd (string) - nombre del comando para buscar configuracion especifica
+//
+//	defaultWorkers (int) - numero por defecto de workers
+//	defaultQueue (int) - tamaño por defecto de la cola
+//	defaultTimeout (int) - timeout por defecto en milisegundos
+//
+// Salida: workersN (int) - numero efectivo de workers
+//
+//	queueN (int) - tamaño efectivo de la cola
+//	timeoutN (int) - timeout efectivo en milisegundos
+//
+// Descripcion: Busca variables de entorno especificas para un comando (WORKERS_<CMD>,
+//
+//	QUEUE_<CMD>, TIMEOUT_<CMD>). Si no las encuentra, usa valores por defecto.
+//	Permite personalizar la configuracion de pools por tipo de operacion.
 func getConfigForCommand(cmd string, defaultWorkers, defaultQueue, defaultTimeout int) (workersN, queueN, timeoutN int) {
 	upper := strings.ToUpper(cmd)
 	workersN = getenvInt("WORKERS_"+upper, defaultWorkers)
@@ -33,16 +63,26 @@ func getConfigForCommand(cmd string, defaultWorkers, defaultQueue, defaultTimeou
 	return
 }
 
+// main es la funcion principal del servidor HTTP PSO.
+// Entrada: ninguna
+// Salida: ninguna
+// Descripcion: Inicializa y configura el servidor HTTP completo incluyendo:
+//   - Configuracion de parametros del servidor y directorios
+//   - Inicializacion de pools de workers con configuracion dinamica
+//   - Configuracion del job manager con persistencia
+//   - Registro de todas las rutas y handlers HTTP
+//   - Inicio del servidor en el puerto especificado
 func main() {
-	// ============================================================
-	// CONFIGURACIÓN GENERAL DEL SERVIDOR
-	// ============================================================
+	// CONFIGURACION GENERAL DEL SERVIDOR
+	// Establece puerto, directorio de datos y parametros globales del JobManager
 
+	// Puerto del servidor (por defecto 8080)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
+	// Directorio para almacenar archivos de datos (por defecto "data")
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
 		dataDir = "data"
@@ -53,13 +93,15 @@ func main() {
 		log.Fatalf("failed to create data directory: %v", err)
 	}
 
-	// Parámetros globales del JobManager
-	qDepth := getenvInt("QUEUE_DEPTH", 50)
-	maxTotal := getenvInt("MAX_TOTAL", 150)
+	// Parametros globales del JobManager para control de carga
+	qDepth := getenvInt("QUEUE_DEPTH", 50)  // Profundidad maxima de cola
+	maxTotal := getenvInt("MAX_TOTAL", 150) // Maximo total de jobs concurrentes
 
-	// ============================================================
-	// CONFIGURACIÓN DE COMANDOS (CPU, IO y utilitarios)
-	// ============================================================
+	// CONFIGURACION DE COMANDOS
+	// Define workers, queue y timeout por tipo de operacion
+	// CPU-bound: operaciones computacionalmente intensivas
+	// IO-bound: operaciones de entrada/salida intensivas
+	// Utilitarios: operaciones ligeras de texto y utilidades
 
 	commands := map[string]struct {
 		workers int
@@ -94,14 +136,15 @@ func main() {
 		"loadtest":   {2, 3, 3000},
 	}
 
-	// Inicializar pools con overrides dinámicos
+	// Inicializar pools de workers con configuracion dinamica
+	// Permite override por variables de entorno especificas por comando
 	for cmd, cfg := range commands {
 		w, q, t := getConfigForCommand(cmd, cfg.workers, cfg.queue, cfg.timeout)
 		workers.InitPool(cmd, w, q)
 		workers.SetTimeout(cmd, t)
 	}
 
-	// Mostrar configuración efectiva
+	// Mostrar configuracion efectiva en logs
 	log.Println("============================================================")
 	log.Printf("Servidor escuchando en http://localhost:%s", port)
 	log.Printf("Ruta de datos: %s", dataDir)
@@ -112,9 +155,8 @@ func main() {
 	}
 	log.Println("============================================================")
 
-	// ============================================================
-	// INICIALIZACIÓN DE JOB MANAGER
-	// ============================================================
+	// INICIALIZACION DE JOB MANAGER
+	// Configura el gestor de trabajos con persistencia en archivo JSONL
 
 	journalPath := filepath.Join(dataDir, "jobs_journal.jsonl")
 	jobMgr, err := jobs.NewJobManager(journalPath, qDepth, maxTotal)
@@ -123,53 +165,51 @@ func main() {
 	}
 	handlers.InitializeJobManager(jobMgr)
 
-	// ============================================================
 	// REGISTRO DE RUTAS
-	// ============================================================
+	// Configura todos los endpoints del servidor HTTP
 
 	srv := server.NewServer(":" + port)
 
-	// Rutas base
-	srv.Router.Handle("/help", handlers.HelpHandler)
-	srv.Router.Handle("/status", handlers.StatusHandler)
-	srv.Router.Handle("/metrics", handlers.MetricsHandler)
+	// Rutas de informacion y monitoreo
+	srv.Router.Handle("/help", handlers.HelpHandler)       // Ayuda y documentacion
+	srv.Router.Handle("/status", handlers.StatusHandler)   // Estado del servidor
+	srv.Router.Handle("/metrics", handlers.MetricsHandler) // Metricas de rendimiento
 
-	// Comandos utilitarios
-	srv.Router.Handle("/fibonacci", handlers.FibonacciHandler)
-	srv.Router.Handle("/createfile", handlers.CreateFileHandler)
-	srv.Router.Handle("/deletefile", handlers.DeleteFileHandler)
-	srv.Router.Handle("/reverse", handlers.ReverseHandler)
-	srv.Router.Handle("/toupper", handlers.ToUpperHandler)
-	srv.Router.Handle("/random", handlers.RandomHandler)
-	srv.Router.Handle("/timestamp", handlers.TimestampHandler)
-	srv.Router.Handle("/hash", handlers.HashHandler)
-	srv.Router.Handle("/simulate", handlers.SimulateHandler)
-	srv.Router.Handle("/sleep", handlers.SleepHandler)
-	srv.Router.Handle("/loadtest", handlers.LoadTestHandler)
+	// Comandos utilitarios y de proposito general
+	srv.Router.Handle("/fibonacci", handlers.FibonacciHandler)   // Secuencia de Fibonacci
+	srv.Router.Handle("/createfile", handlers.CreateFileHandler) // Crear archivos
+	srv.Router.Handle("/deletefile", handlers.DeleteFileHandler) // Eliminar archivos
+	srv.Router.Handle("/reverse", handlers.ReverseHandler)       // Invertir texto
+	srv.Router.Handle("/toupper", handlers.ToUpperHandler)       // Convertir a mayusculas
+	srv.Router.Handle("/random", handlers.RandomHandler)         // Generar numeros aleatorios
+	srv.Router.Handle("/timestamp", handlers.TimestampHandler)   // Obtener timestamp actual
+	srv.Router.Handle("/hash", handlers.HashHandler)             // Calcular hash de texto
+	srv.Router.Handle("/simulate", handlers.SimulateHandler)     // Simular operaciones
+	srv.Router.Handle("/sleep", handlers.SleepHandler)           // Pausar ejecucion
+	srv.Router.Handle("/loadtest", handlers.LoadTestHandler)     // Pruebas de carga
 
-	// CPU-bound
-	srv.Router.Handle("/isprime", handlers.IsPrimeHandler)
-	srv.Router.Handle("/factor", handlers.FactorHandler)
-	srv.Router.Handle("/pi", handlers.PiHandler)
-	srv.Router.Handle("/matrixmul", handlers.MatrixHandler)
-	srv.Router.Handle("/mandelbrot", handlers.MandelbrotHandler)
+	// Algoritmos CPU-intensivos para calculo matematico
+	srv.Router.Handle("/isprime", handlers.IsPrimeHandler)       // Verificar si es primo
+	srv.Router.Handle("/factor", handlers.FactorHandler)         // Factorizacion de numeros
+	srv.Router.Handle("/pi", handlers.PiHandler)                 // Calculo de Pi
+	srv.Router.Handle("/matrixmul", handlers.MatrixHandler)      // Multiplicacion de matrices
+	srv.Router.Handle("/mandelbrot", handlers.MandelbrotHandler) // Conjunto de Mandelbrot
 
-	// IO-bound
-	srv.Router.Handle("/sortfile", handlers.SortFileHandler)
-	srv.Router.Handle("/wordcount", handlers.WordCountHandler)
-	srv.Router.Handle("/grep", handlers.GrepHandler)
-	srv.Router.Handle("/hashfile", handlers.HashFileHandler)
-	srv.Router.Handle("/compress", handlers.CompressHandler)
+	// Operaciones IO-intensivas para manejo de archivos
+	srv.Router.Handle("/sortfile", handlers.SortFileHandler)   // Ordenar contenido de archivos
+	srv.Router.Handle("/wordcount", handlers.WordCountHandler) // Contar palabras en archivos
+	srv.Router.Handle("/grep", handlers.GrepHandler)           // Buscar patrones en archivos
+	srv.Router.Handle("/hashfile", handlers.HashFileHandler)   // Calcular hash de archivos
+	srv.Router.Handle("/compress", handlers.CompressHandler)   // Comprimir archivos
 
-	// Jobs endpoints
-	srv.Router.Handle("/jobs/submit", handlers.JobsSubmitHandler)
-	srv.Router.Handle("/jobs/status", handlers.JobsStatusHandler)
-	srv.Router.Handle("/jobs/result", handlers.JobsResultHandler)
-	srv.Router.Handle("/jobs/cancel", handlers.JobsCancelHandler)
+	// Endpoints para gestion de trabajos asincronos
+	srv.Router.Handle("/jobs/submit", handlers.JobsSubmitHandler) // Enviar nuevo trabajo
+	srv.Router.Handle("/jobs/status", handlers.JobsStatusHandler) // Consultar estado de trabajo
+	srv.Router.Handle("/jobs/result", handlers.JobsResultHandler) // Obtener resultado de trabajo
+	srv.Router.Handle("/jobs/cancel", handlers.JobsCancelHandler) // Cancelar trabajo en ejecucion
 
-	// ============================================================
-	// EJECUCIÓN DEL SERVIDOR
-	// ============================================================
+	// EJECUCION DEL SERVIDOR
+	// Inicia el servidor HTTP y escucha peticiones
 
 	if err := srv.Start(); err != nil {
 		log.Fatalf("Error al iniciar servidor: %v", err)

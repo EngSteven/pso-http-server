@@ -1,3 +1,10 @@
+/*
+Autores: Steven Sequeira Araya, Jefferson Salas Cordero
+Nombre del archivo: help_handler.go
+Descripcion: Handler HTTP que proporciona informacion de ayuda del servidor
+incluyendo endpoints disponibles, comandos de jobs y notas de uso.
+*/
+
 package handlers
 
 import (
@@ -7,6 +14,7 @@ import (
 	"github.com/EngSteven/pso-http-server/internal/types"
 )
 
+// HelpInfo estructura JSON con informacion completa del servidor.
 type HelpInfo struct {
 	Name          string   `json:"name"`
 	Version       string   `json:"version"`
@@ -16,12 +24,23 @@ type HelpInfo struct {
 	Notes         []string `json:"notes"`
 }
 
-// HelpHandler devuelve información general y endpoints disponibles.
+// HelpHandler proporciona documentacion completa de la API del servidor.
+// Entrada: req (*types.Request) - request HTTP (no requiere parametros)
+// Salida: *types.Response - respuesta HTTP con documentacion de la API en JSON
+// Descripcion: Handler HTTP que retorna informacion estatica sobre endpoints
+//
+//	disponibles, comandos de jobs, version del servidor y notas de uso.
+//	No procesa parametros de entrada, siempre retorna la misma informacion.
 func HelpHandler(req *types.Request) *types.Response {
+	// === CONSTRUCCION DE INFORMACION ESTATICA ===
+	// Crear estructura completa con documentacion del servidor
 	info := HelpInfo{
 		Name:        "PSO HTTP Server",
 		Version:     "1.0",
 		Description: "Servidor HTTP concurrente con soporte para ejecución directa o asincrónica (Jobs) de algoritmos CPU e IO bound.",
+
+		// === LISTADO DE ENDPOINTS HTTP ===
+		// Documentar todos los endpoints disponibles organizados por categoria
 		HTTPEndpoints: []string{
 			// --- Sistema ---
 			"/help",
@@ -62,6 +81,9 @@ func HelpHandler(req *types.Request) *types.Response {
 			"/jobs/result?id=JOBID",
 			"/jobs/cancel?id=JOBID",
 		},
+
+		// === COMANDOS DISPONIBLES PARA JOBS ===
+		// Listar todos los comandos que pueden ejecutarse via jobs
 		JobCommands: []string{
 			// Básicos
 			"reverse", "toupper", "lowercase", "hash",
@@ -74,6 +96,9 @@ func HelpHandler(req *types.Request) *types.Response {
 			"createfile", "deletefile", "sortfile", "wordcount",
 			"grep", "hashfile", "compress",
 		},
+
+		// === NOTAS Y OBSERVACIONES ===
+		// Proporcionar informacion adicional sobre uso y caracteristicas
 		Notes: []string{
 			"Todos los endpoints soportan HTTP/1.0 y devuelven JSON.",
 			"Los comandos listados en 'job_commands' pueden ejecutarse vía /jobs/submit.",
@@ -83,6 +108,11 @@ func HelpHandler(req *types.Request) *types.Response {
 		},
 	}
 
+	// === SERIALIZACION JSON ===
+	// Convertir estructura de ayuda a JSON formateado
 	body, _ := json.MarshalIndent(info, "", "  ")
+
+	// === RESPUESTA EXITOSA ===
+	// Retornar documentacion completa con codigo 200
 	return server.NewResponse(200, "OK", "application/json", body)
 }

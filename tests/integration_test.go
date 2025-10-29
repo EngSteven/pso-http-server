@@ -1,3 +1,10 @@
+/*
+Autores: Steven Sequeira Araya, Jefferson Salas Cordero
+Nombre del archivo: integration_test.go
+Descripcion: Suite de pruebas de integracion completas que valida
+servidor embebido, endpoints HTTP, jobs asincronos y pools de workers.
+*/
+
 package tests
 
 // ============================================================
@@ -18,12 +25,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/EngSteven/pso-http-server/internal/server"
-	"github.com/EngSteven/pso-http-server/internal/router"
 	"github.com/EngSteven/pso-http-server/internal/handlers"
 	"github.com/EngSteven/pso-http-server/internal/jobs"
-	"github.com/EngSteven/pso-http-server/internal/workers"
+	"github.com/EngSteven/pso-http-server/internal/router"
+	"github.com/EngSteven/pso-http-server/internal/server"
 	"github.com/EngSteven/pso-http-server/internal/types"
+	"github.com/EngSteven/pso-http-server/internal/workers"
 )
 
 var (
@@ -37,7 +44,16 @@ var (
 // ============================================================
 
 // setupIntegration levanta el servidor embebido una sola vez.
+// Entrada: t (*testing.T) - contexto de testing para logging y control
+// Salida: ninguna (void)
+// Descripcion: Inicializa servidor embebido HTTP si no esta activo.
+//
+//	Evita reinicios multiples. Inicia servidor en background
+//	y espera que este disponible antes de continuar con tests.
+//	Usado por todas las pruebas de integracion.
 func setupIntegration(t *testing.T) {
+	// === VERIFICACION DE ESTADO GLOBAL ===
+	// Evitar reinicialización múltiple del servidor
 	if serverStarted {
 		return // evitar reinicios
 	}
@@ -46,17 +62,31 @@ func setupIntegration(t *testing.T) {
 	t.Log("SETUP: Iniciando servidor embebido para pruebas de integración")
 	t.Log("============================================================")
 
+	// === ARRANQUE EN BACKGROUND ===
+	// Lanzar servidor en goroutine separada
 	go startEmbeddedServer()
+	// === ESPERA HASTA DISPONIBILIDAD ===
+	// Bloquear hasta que servidor responda
 	waitForServer(t)
 	t.Log("Servidor embebido disponible en:", baseURL)
 }
 
-
 // startEmbeddedServer inicializa rutas, pools y job manager.
+// Entrada: ninguna
+// Salida: ninguna (void)
+// Descripcion: Configura servidor HTTP completo para testing. Inicializa
+//
+//	router, pools de workers para todos los algoritmos, job manager
+//	con persistencia, y registra todos los endpoints HTTP.
+//	Servidor queda listo para recibir requests de pruebas.
 func startEmbeddedServer() {
+	// === INICIALIZACION DEL ROUTER ===
+	// Crear router para registro de endpoints
 	r := router.NewRouter()
 
-	// Inicialización de pools básicos y avanzados
+	// === CONFIGURACION DE POOLS DE WORKERS ===
+	// Inicializar pools especializados para cada algoritmo
+	// Pools básicos (mayor capacidad)
 	workers.InitPool("fibonacci", 2, 5)
 	workers.InitPool("reverse", 2, 5)
 	workers.InitPool("toupper", 2, 5)
@@ -66,6 +96,7 @@ func startEmbeddedServer() {
 	workers.InitPool("createfile", 2, 5)
 	workers.InitPool("deletefile", 2, 5)
 	workers.InitPool("hash", 2, 5)
+	// Pools intensivos (menor capacidad para CPU/IO)
 	workers.InitPool("isprime", 1, 2)
 	workers.InitPool("factor", 1, 2)
 	workers.InitPool("pi", 1, 2)
@@ -77,7 +108,8 @@ func startEmbeddedServer() {
 	workers.InitPool("hashfile", 1, 2)
 	workers.InitPool("compress", 1, 2)
 
-	// Job Manager
+	// === CONFIGURACION DEL JOB MANAGER ===
+	// Inicializar sistema de jobs con persistencia
 	os.MkdirAll("data", 0755)
 	jobMgr, err := jobs.NewJobManager("data/jobs_journal_test.jsonl", 20, 50)
 	if err != nil {
@@ -86,7 +118,8 @@ func startEmbeddedServer() {
 	}
 	handlers.InitializeJobManager(jobMgr)
 
-	// Registrar rutas HTTP
+	// === REGISTRO DE ENDPOINTS HTTP ===
+	// Registrar todos los handlers de algoritmos y jobs
 	r.Handle("/reverse", handlers.ReverseHandler)
 	r.Handle("/toupper", handlers.ToUpperHandler)
 	r.Handle("/status", handlers.StatusHandler)
@@ -116,6 +149,8 @@ func startEmbeddedServer() {
 	r.Handle("/jobs/result", handlers.JobsResultHandler)
 	r.Handle("/jobs/cancel", handlers.JobsCancelHandler)
 
+	// === CREACION Y ARRANQUE DEL SERVIDOR ===
+	// Configurar servidor con router y iniciar en puerto 8080
 	s := server.NewServer(":8080")
 	s.Router = r
 	testServer = s
@@ -128,27 +163,56 @@ func startEmbeddedServer() {
 }
 
 // waitForServer bloquea hasta que /status responda o agote timeout.
+// Entrada: t (*testing.T) - contexto de testing para errores fatales
+// Salida: ninguna (void)
+// Descripcion: Espera hasta que servidor responda en /status con codigo 200
+//
+//	o agote timeout de 5 segundos. Marca serverStarted como true
+//	cuando servidor esta listo. Bloquea ejecucion hasta confirmar
+//	que servidor acepta connections HTTP.
 func waitForServer(t *testing.T) {
+	// === CONFIGURACION DE TIMEOUT ===
+	// Establecer límite de tiempo para evitar espera infinita
 	deadline := time.Now().Add(5 * time.Second)
 	for {
+		// === HEALTH CHECK DEL SERVIDOR ===
+		// Intentar conectar al endpoint /status
 		resp, err := http.Get(baseURL + "/status")
 		if err == nil && resp.StatusCode == 200 {
 			resp.Body.Close()
+			// === MARCADO COMO DISPONIBLE ===
+			// Servidor respondió correctamente
 			serverStarted = true
 			return
 		}
+		// === VERIFICACION DE TIMEOUT ===
+		// Fallar test si servidor no responde en tiempo límite
 		if time.Now().After(deadline) {
 			t.Fatal("El servidor no respondió en el tiempo esperado")
 		}
+		// === ESPERA ENTRE REINTENTOS ===
 		time.Sleep(200 * time.Millisecond)
 	}
 }
 
 // decodeJSONResp convierte una respuesta HTTP a JSON.
+// Entrada: t (*testing.T) - contexto de testing para errores fatales
+//
+//	resp (*http.Response) - respuesta HTTP a decodificar
+//
+// Salida: map[string]interface{} - datos JSON parseados
+// Descripcion: Lee body de respuesta HTTP y lo parsea como JSON.
+//
+//	Retorna mapa con datos decodificados. Error fatal si
+//	JSON es invalido. Usado por tests para validar respuestas.
 func decodeJSONResp(t *testing.T, resp *http.Response) map[string]interface{} {
 	defer resp.Body.Close()
+	// === LECTURA COMPLETA DEL BODY ===
+	// Leer todo el contenido de la respuesta
 	body, _ := io.ReadAll(resp.Body)
 	var data map[string]interface{}
+	// === PARSING Y VALIDACION JSON ===
+	// Decodificar JSON y fallar test si es inválido
 	if err := json.Unmarshal(body, &data); err != nil {
 		t.Fatalf("invalid JSON response: %v", err)
 	}
@@ -163,10 +227,14 @@ func decodeJSONResp(t *testing.T, resp *http.Response) map[string]interface{} {
 func TestServer_ReverseEndpoint(t *testing.T) {
 	setupIntegration(t)
 
+	// === REQUEST AL ENDPOINT REVERSE ===
+	// Probar funcionalidad básica de reversión de texto
 	resp, err := http.Get(baseURL + "/reverse?text=abcd")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
+	// === VALIDACION DE RESPUESTA ===
+	// Verificar que respuesta JSON contiene resultado esperado
 	data := decodeJSONResp(t, resp)
 	if data["output"] != "dcba" {
 		t.Errorf("expected dcba, got %v", data["output"])
@@ -177,10 +245,14 @@ func TestServer_ReverseEndpoint(t *testing.T) {
 func TestServer_ToUpper(t *testing.T) {
 	setupIntegration(t)
 
+	// === REQUEST AL ENDPOINT TOUPPER ===
+	// Probar conversión a mayúsculas
 	resp, err := http.Get(baseURL + "/toupper?text=hola")
 	if err != nil {
 		t.Fatalf("toupper request failed: %v", err)
 	}
+	// === VALIDACION DE CONVERSION ===
+	// Verificar transformación correcta a mayúsculas
 	data := decodeJSONResp(t, resp)
 	if data["output"] != "HOLA" {
 		t.Errorf("toupper failed: %v", data)
@@ -189,12 +261,17 @@ func TestServer_ToUpper(t *testing.T) {
 
 // TestServer_StatusMetricsHelp valida /status, /metrics y /help.
 func TestServer_StatusMetricsHelp(t *testing.T) {
+	// === ENDPOINTS DE MONITOREO Y AYUDA ===
+	// Verificar disponibilidad de endpoints informativos
 	endpoints := []string{"/status", "/metrics", "/help"}
 	for _, ep := range endpoints {
+		// === REQUEST A CADA ENDPOINT ===
 		resp, err := http.Get(baseURL + ep)
 		if err != nil {
 			t.Fatalf("failed %s: %v", ep, err)
 		}
+		// === VALIDACION DE CODIGO 200 ===
+		// Todos los endpoints deben responder exitosamente
 		if resp.StatusCode != 200 {
 			t.Errorf("%s returned %d", ep, resp.StatusCode)
 		}
@@ -238,6 +315,8 @@ func TestServer_InvalidPath(t *testing.T) {
 
 // TestJobs_SubmitStatusResultFlow valida flujo completo de un Job.
 func TestJobs_SubmitStatusResultFlow(t *testing.T) {
+	// === ENVIO DE JOB ASINCRONO ===
+	// Crear job fibonacci y obtener ID
 	resp, err := http.Get(baseURL + "/jobs/submit?task=fibonacci&num=10")
 	if err != nil {
 		t.Fatalf("submit failed: %v", err)
@@ -245,13 +324,20 @@ func TestJobs_SubmitStatusResultFlow(t *testing.T) {
 	submitData := decodeJSONResp(t, resp)
 	jobID := submitData["job_id"].(string)
 
+	// === ESPERA PARA PROCESAMIENTO ===
+	// Dar tiempo al job para completarse
 	time.Sleep(1 * time.Second)
+
+	// === VERIFICACION DE ESTADO ===
+	// Consultar estado del job
 	resp2, _ := http.Get(baseURL + "/jobs/status?id=" + jobID)
 	statusData := decodeJSONResp(t, resp2)
 	if statusData["status"] != "done" {
 		t.Errorf("expected job done, got %v", statusData["status"])
 	}
 
+	// === OBTENCION DE RESULTADO ===
+	// Recuperar resultado final del job
 	resp3, _ := http.Get(baseURL + "/jobs/result?id=" + jobID)
 	resultData := decodeJSONResp(t, resp3)
 	if int(resultData["n"].(float64)) != 10 {
@@ -291,17 +377,24 @@ func TestServer_ConcurrentRequests(t *testing.T) {
 
 	t.Logf("\n--- [RUNNING] %d concurrent requests to /reverse ---", N)
 
+	// === LANZAMIENTO DE REQUESTS CONCURRENTES ===
+	// Crear N goroutines simultáneas
 	for i := 0; i < N; i++ {
 		go func(i int) {
+			// === REQUEST CONCURRENTE ===
+			// Cada goroutine hace request independiente
 			resp, err := http.Get(baseURL + fmt.Sprintf("/reverse?text=req%d", i))
 			if err != nil {
 				errCh <- fmt.Errorf("client %d failed: %v", i, err)
 				return
 			}
 
+			// === VALIDACION DE RESPUESTA ===
+			// Aceptar tanto éxito como backpressure
 			switch resp.StatusCode {
 			case 200, 503:
-				// ambos son aceptables
+				// === CODIGOS ACEPTABLES ===
+				// 200: éxito, 503: cola llena (backpressure)
 			default:
 				errCh <- fmt.Errorf("client %d unexpected code: %d", i, resp.StatusCode)
 			}
@@ -311,6 +404,8 @@ func TestServer_ConcurrentRequests(t *testing.T) {
 		}(i)
 	}
 
+	// === RECOPILACION DE RESULTADOS ===
+	// Contar errores inesperados
 	var badCount int
 	for i := 0; i < N; i++ {
 		if err := <-errCh; err != nil {
@@ -319,6 +414,7 @@ func TestServer_ConcurrentRequests(t *testing.T) {
 		}
 	}
 
+	// === EVALUACION FINAL ===
 	if badCount == 0 {
 		t.Log("[OK] All concurrent requests handled correctly (200/503)")
 	} else {
