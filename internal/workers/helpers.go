@@ -8,6 +8,8 @@ submission de jobs y configuracion de timeouts con fallbacks.
 package workers
 
 import (
+	"encoding/json"
+
 	"github.com/EngSteven/pso-http-server/internal/server"
 	"github.com/EngSteven/pso-http-server/internal/types"
 )
@@ -49,8 +51,12 @@ func HandlePoolSubmit(poolName string, job JobFunc, priority int) *types.Respons
 		switch err {
 		case ErrQueueFull:
 			// === COLA LLENA - BACKPRESSURE ===
-			return server.NewResponse(503, "Service Unavailable", "application/json",
-				[]byte(`{"error":"queue full"}`))
+    	retryAfter := DefaultTimeoutFor(poolName)
+			body, _ := json.Marshal(map[string]interface{}{
+					"error":          "queue full",
+					"retry_after_ms": retryAfter,
+			})
+			return server.NewResponse(503, "Service Unavailable", "application/json", body)
 		case ErrTimeout:
 			// === TIMEOUT DE JOB ===
 			return server.NewResponse(408, "Internal Server Error", "application/json",

@@ -8,23 +8,23 @@ BUILD_DIR=./bin
 all: build
 
 # ------------------------------------------------------------
-# ⚙️ Compilar el proyecto
+#  Compilar el proyecto
 # ------------------------------------------------------------
 build:
 	@echo "Compilando $(APP_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	@go build -o $(BUILD_DIR)/$(APP_NAME) $(CMD_PATH)
-	@echo "✅ Build completado: $(BUILD_DIR)/$(APP_NAME)"
+	@echo "Build completado: $(BUILD_DIR)/$(APP_NAME)"
 
 # ------------------------------------------------------------
-# 🚀 Ejecutar el binario compilado
+#  Ejecutar el binario compilado
 # ------------------------------------------------------------
 run:
 	@echo "Ejecutando servidor..."
 	@$(BUILD_DIR)/$(APP_NAME)
 
 # ------------------------------------------------------------
-# 🧪 Ejecutar TODOS los tests con cobertura
+#  Ejecutar TODOS los tests con cobertura
 # ------------------------------------------------------------
 test-all:
 	@echo "===================================================="
@@ -35,15 +35,15 @@ test-all:
 	    -coverprofile=reports/coverage.out
 
 # ------------------------------------------------------------
-# 🔍 Linter (opcional)
+#  Linter (opcional)
 # ------------------------------------------------------------
 lint:
 	@echo "Ejecutando linter..."
-	@golangci-lint run || echo "⚠️ Linter detectó advertencias"
+	@golangci-lint run || echo "Linter detectó advertencias"
 
 # ------------------------------------------------------------
-# 🧹 Limpiar binarios y reportes
+#  Limpiar binarios y reportes
 # ------------------------------------------------------------
 clean:
-	@echo "🧹 Limpiando archivos compilados y reportes..."
+	@echo " Limpiando archivos compilados y reportes..."
 	@rm -rf $(BUILD_DIR) reports test_report.txt coverage.out

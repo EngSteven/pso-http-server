@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"errors"
+	"io"
 
 	"github.com/EngSteven/pso-http-server/internal/types"
 )
@@ -25,12 +27,20 @@ import (
 //	Valida formato y construye estructura Request para procesamiento.
 func ParseRequest(reader *bufio.Reader) (*types.Request, error) {
 	// === LECTURA DE REQUEST LINE ===
-	// Primera línea contiene método, URL y versión HTTP
 	line, err := reader.ReadString('\n')
 	if err != nil {
+		if errors.Is(err, io.EOF) {
+			// Cliente cerró la conexión, no es error real
+			return nil, nil
+		}
 		return nil, fmt.Errorf("error leyendo request line: %v", err)
 	}
 	line = strings.TrimSpace(line)
+
+	// Si la línea viene vacía (por conexiones cerradas sin request)
+	if line == "" {
+		return nil, nil
+	}
 
 	// === PARSING DE COMPONENTES REQUEST LINE ===
 	// Dividir en exactamente 3 partes: método URL versión

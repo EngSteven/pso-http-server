@@ -358,7 +358,7 @@ func TestJobs_Cancel(t *testing.T) {
 	resp2, _ := http.Get(baseURL + "/jobs/status?id=" + jobID)
 	data := decodeJSONResp(t, resp2)
 	status := data["status"].(string)
-	if status != "canceled" && status != "done" && status != "running" && status != "queued" {
+	if status != "cancel_requested" && status != "canceled" && status != "done" && status != "running" && status != "queued" {
 		t.Errorf("unexpected job status: %s", status)
 	}
 }

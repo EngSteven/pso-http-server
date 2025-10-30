@@ -48,18 +48,21 @@ var defaultTimeouts = map[string]int{
 //
 //	especifico. Si no encuentra configuracion, retorna valor por
 //	defecto de 5000ms como fallback para cualquier comando.
+
 func timeoutForCommand(cmd string) int {
-	// === BUSQUEDA DE TIMEOUT CONFIGURADO ===
-	// Consultar mapa de timeouts por comando específico
-	if v, ok := defaultTimeouts[cmd]; ok {
-		return v
-	}
+    // === INTENTA OBTENER TIMEOUT DEL POOL ===
+    if v := workers.DefaultTimeoutFor(cmd); v > 0 {
+        return v
+    }
 
-	// === TIMEOUT POR DEFECTO ===
-	// Retornar fallback de 5000ms para comandos sin configuración
-	return 5000
+    // === FALLBACK A MAPA LOCAL SI EXISTE ===
+    if v, ok := defaultTimeouts[cmd]; ok {
+        return v
+    }
+
+    // === TIMEOUT POR DEFECTO GLOBAL ===
+    return 5000
 }
-
 // JobManager administra colas de jobs por prioridad y dispatch a pools.
 // Mantiene persistencia en journal y canales de comunicacion para resultados.
 type JobManager struct {
@@ -201,9 +204,15 @@ func (j *JobManager) Submit(command string, params map[string]string, priority P
 	total := len(j.highQ) + len(j.normalQ) + len(j.lowQ)
 	if total >= j.maxQueueTotal {
 		// === BACKPRESSURE - RECHAZO CON RETRY ===
-		// Rechazar job y sugerir tiempo de reintento
+		// Calcular tiempo sugerido en milisegundos
 		retryAfter := workers.DefaultTimeoutFor(command)
-		return "", fmt.Errorf("queue full: retry_after_ms=%d", retryAfter)
+
+		// Log informativo
+		fmt.Printf("[BACKPRESSURE] Cola llena para '%s' → retry_after_ms=%d\n", command, retryAfter)
+
+		// Retornar error en formato JSON explícito
+		msg := fmt.Sprintf(`{"error":"queue full","retry_after_ms":%d}`, retryAfter)
+		return "", errors.New(msg)
 	}
 
 	// === CREACION DE METADATA DEL JOB ===
@@ -383,8 +392,8 @@ func (j *JobManager) dispatcher() {
 			// === REGISTRO DE CANALES DE COMUNICACION ===
 			// Almacenar canales para comunicación con worker pool
 			j.mu.Lock()
-			j.resChMap[jobID] = pResCh
-			j.cancelChMap[jobID] = cancelCh
+			j.resChMap[meta.ID] = pResCh
+			j.cancelChMap[meta.ID] = cancelCh
 			j.mu.Unlock()
 
 			// === DELEGACION DE MONITOREO ===
@@ -412,8 +421,17 @@ func (j *JobManager) waitForResult(meta *JobMeta, id string, pch chan *types.Res
 	select {
 	case res := <-pch:
 		// === RESULTADO EXITOSO RECIBIDO ===
-		// Actualizar job con resultado del worker pool
-		j.updateJobResult(meta, res)
+		j.mu.Lock()
+		alreadyCancelled := meta.Status == StatusCanceled || meta.Status == StatusCancelRequested
+		j.mu.Unlock()
+
+		 if alreadyCancelled {
+					//Ignorar resultados posteriores a cancelación
+					return
+			}
+
+			j.updateJobResult(meta, res)
+
 	case <-time.After(timeout):
 		// === TIMEOUT - CANCELACION Y LIMPIEZA ===
 		// Enviar señal de cancelación al worker
@@ -602,14 +620,16 @@ func (j *JobManager) updateJobResult(meta *JobMeta, res *types.Response) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if res != nil {
-		// === RESULTADO EXITOSO - SERIALIZACION ===
-		// Convertir respuesta completa a JSON para almacenamiento
-		b, _ := json.Marshal(res)
-		meta.Result = string(b)
-		meta.Status = StatusDone
+		// Si la respuesta indica cancelación, no marcar como done
+		if res.StatusCode == 499 || res.StatusText == "Client Closed Request" {
+			meta.Status = StatusCanceled
+			meta.Error = "job cancelled by client"
+		} else {
+			b, _ := json.Marshal(res)
+			meta.Result = string(b)
+			meta.Status = StatusDone
+		}
 	} else {
-		// === RESULTADO NULO - ERROR ===
-		// Manejar caso de respuesta nula como error
 		meta.Error = "nil response"
 		meta.Status = StatusError
 	}
@@ -700,41 +720,46 @@ func (j *JobManager) GetMeta(id string) (*JobMeta, error) {
 
 func (j *JobManager) Cancel(id string) error {
 	j.mu.Lock()
-	// === VERIFICACION DE EXISTENCIA ===
-	// Buscar job en store de metadata
+	defer j.mu.Unlock()
+
 	meta, ok := j.store[id]
 	if !ok {
-		j.mu.Unlock()
 		return ErrJobNotFound
 	}
-	// === VERIFICACION DE ESTADO CANCELABLE ===
-	// Jobs finalizados no pueden ser cancelados
+
+	// === JOB YA FINALIZADO O CANCELADO ===
 	if meta.Status == StatusDone || meta.Status == StatusError || meta.Status == StatusCanceled {
-		j.mu.Unlock()
 		return ErrJobCancelled
 	}
+
 	// === CANCELACION DE JOB EN COLA ===
-	// Job aún no ejecutándose, cancelar directamente
 	if meta.Status == StatusQueued {
 		meta.Status = StatusCanceled
 		meta.UpdatedAt = time.Now()
 		meta.Error = "canceled before dispatch"
 		j.appendToJournal(meta)
-		j.mu.Unlock()
 		return nil
 	}
+
 	// === CANCELACION DE JOB EN EJECUCION ===
-	// Enviar señal de cancelación al worker
 	if cancelCh, ok := j.cancelChMap[id]; ok {
-		close(cancelCh)
-		meta.Status = StatusCanceled
-		meta.UpdatedAt = time.Now()
-		j.appendToJournal(meta)
-		j.mu.Unlock()
-		return nil
+		// Nuevo: verificar si el canal ya está cerrado
+		select {
+		case <-cancelCh:
+			// ya estaba cerrado, no volver a cerrarlo
+			return ErrJobCancelled
+		default:
+			// aún abierto, se puede cerrar
+			close(cancelCh)
+			meta.Status = StatusCancelRequested
+			meta.UpdatedAt = time.Now()
+			meta.Error = "cancel requested"
+			j.appendToJournal(meta)
+			return nil
+		}
 	}
+
 	// === JOB NO CANCELABLE ===
-	// Estado inconsistente o ya procesado
-	j.mu.Unlock()
 	return ErrJobCancelled
 }
+

@@ -31,9 +31,9 @@ func CalculatePi(digits int, cancelCh <-chan struct{}) *types.Response {
 
 	// === VALIDACION DE PARAMETROS ===
 	// Verificar que el numero de digitos este en rango valido
-	if digits <= 0 || digits > 100000 {
+	if digits <= 0 || digits > 10000000 {
 		return server.NewResponse(400, "Bad Request", "application/json",
-			[]byte(`{"error":"invalid parameter: digits must be between 1 and 10000"}`))
+			[]byte(`{"error":"invalid parameter: digits must be between 1 and 10000000"}`))
 	}
 
 	// === VERIFICACION DE CANCELACION INICIAL ===
@@ -52,6 +52,12 @@ func CalculatePi(digits int, cancelCh <-chan struct{}) *types.Response {
 	// === CALCULO DE PI CON CHUDNOVSKY ===
 	// Llamar algoritmo de Chudnovsky para aproximacion de alta precision
 	bigPi := chudnovskyPi(prec, cancelCh)
+
+	// Si fue cancelado dentro del cálculo
+	if bigPi == nil {
+			return server.NewResponse(499, "Client Closed Request", "application/json",
+					[]byte(`{"error":"operation cancelled"}`))
+	}
 
 	// === FORMATEO DE RESULTADO ===
 	// Convertir resultado a string con precision especificada
@@ -103,7 +109,7 @@ func chudnovskyPi(prec uint, cancelCh <-chan struct{}) *big.Float {
 		// Permitir cancelacion entre iteraciones costosas
 		select {
 		case <-cancelCh:
-			return big.NewFloat(0)
+			return nil
 		default:
 		}
 

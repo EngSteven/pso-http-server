@@ -5,13 +5,6 @@ Descripcion: Servidor HTTP principal que acepta conexiones TCP, parsea requests
 y delega procesamiento a handlers via router con logging detallado.
 */
 
-/*
-Autores: Steven Sequeira Araya, Jefferson Salas Cordero
-Nombre del archivo: http_server.go
-Descripcion: Servidor HTTP principal que maneja conexiones TCP,
-parsea requests, ejecuta handlers y registra metricas con logging detallado.
-*/
-
 package server
 
 import (
@@ -107,6 +100,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		response := NewResponse(400, "Bad Request", "text/plain", []byte("400 Bad Request"))
 		conn.Write(response.Bytes())
 		log.Printf("[ERROR] parse request: %v", err)
+		return
+	}
+	if request == nil {
+		// EOF o conexión cerrada sin request
 		return
 	}
 

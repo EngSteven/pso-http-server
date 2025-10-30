@@ -19,6 +19,7 @@ const (
 	StatusError    = "error"    // Job falló con error
 	StatusCanceled = "canceled" // Job cancelado por usuario
 	StatusTimeout  = "timeout"  // Job cancelado por timeout
+	StatusCancelRequested  = "cancel_requested" // Solicitud de cancelación recibida
 )
 
 // Priority define niveles de prioridad para ejecucion de jobs.
