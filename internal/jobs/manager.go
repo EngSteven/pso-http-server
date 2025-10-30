@@ -415,9 +415,8 @@ func (j *JobManager) dispatcher() {
 //
 //	con resultado/error, limpia canales de mapas y persiste estado final.
 func (j *JobManager) waitForResult(meta *JobMeta, id string, pch chan *types.Response, cancelCh chan struct{}) {
-	// === CONFIGURACION DE TIMEOUT ===
-	// Calcular timeout basado en metadata del job
 	timeout := time.Duration(meta.TimeoutMs) * time.Millisecond
+
 	select {
 	case res := <-pch:
 		// === RESULTADO EXITOSO RECIBIDO ===
@@ -425,24 +424,35 @@ func (j *JobManager) waitForResult(meta *JobMeta, id string, pch chan *types.Res
 		alreadyCancelled := meta.Status == StatusCanceled || meta.Status == StatusCancelRequested
 		j.mu.Unlock()
 
-		 if alreadyCancelled {
-					//Ignorar resultados posteriores a cancelación
-					return
-			}
-
-			j.updateJobResult(meta, res)
+		if alreadyCancelled {
+			// 🔹 Ignorar resultados posteriores a cancelación
+			return
+		}
+		j.updateJobResult(meta, res)
 
 	case <-time.After(timeout):
 		// === TIMEOUT - CANCELACION Y LIMPIEZA ===
-		// Enviar señal de cancelación al worker
-		close(cancelCh)
+		// 🔹 Si ya fue cancelado, no marcar como timeout
+		j.mu.Lock()
+		if meta.Status == StatusCanceled || meta.Status == StatusCancelRequested {
+			j.mu.Unlock()
+			return
+		}
+		j.mu.Unlock()
+
+		// Cerrar canal solo si no fue cerrado
+		select {
+		case <-cancelCh:
+			// canal ya cerrado
+		default:
+			close(cancelCh)
+		}
+
 		j.mu.Lock()
 		meta.Status = StatusTimeout
 		meta.Error = fmt.Sprintf("timed out after %d ms", meta.TimeoutMs)
 		meta.UpdatedAt = time.Now()
 		j.appendToJournal(meta)
-		// === LIMPIEZA DE CANALES ===
-		// Remover canales de mapas de seguimiento
 		delete(j.resChMap, id)
 		delete(j.cancelChMap, id)
 		j.mu.Unlock()
