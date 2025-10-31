@@ -12,6 +12,10 @@ Jefferson Salas Cordero
 
 https://documenter.getpostman.com/view/37666062/2sB3QQK8Eh
 
+## Video explicación:
+
+https://youtu.be/a47ozGUjfz4
+
 ## Compilación y Ejecución
 
 Importante, para compilar y ejecutar el proyecto debe hacerlo desde una terminal que soporte Linux
